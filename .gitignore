@@ -1,4 +1,4 @@
-!/.trae/
-!/.idea/
-!/.idea/**
+.trae/
+.idea/
+.idea/**
 
