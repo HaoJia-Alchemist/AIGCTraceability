@@ -35,14 +35,14 @@ pip install -r requirements.txt
 ### 命令行模式
 
 ```bash
-cd src
+cd dataset_generate
 python generate_data.py --config dataset_config.yaml
 ```
 
 ### Web服务模式
 
 ```bash
-cd src
+cd dataset_generate
 python generate_data.py --web
 ```
 
