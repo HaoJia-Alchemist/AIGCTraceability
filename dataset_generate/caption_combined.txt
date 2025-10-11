@@ -1,4 +1,4 @@
-image,caption
+image,prompt
 1000268201_693b08cb0e.jpg,"A little girl in a pink dress is climbing the stairs to her wooden playhouse, which she is entering."
 1001773457_577c3a7d70.jpg,"A black dog and a tri-colored dog, which includes a white dog with brown spots, are staring at each other on the road, with the two dogs of different breeds moving toward each other on the pavement."
 1002674143_1b742ab4b8.jpg,"A little girl with pigtails, covered in paint, sits in front of a large painted rainbow on a white canvas, her hands in a bowl as she plays with fingerpaints in the grass."

@@ -260,19 +260,28 @@ generators:
     #      num_inference_steps: 50
     batch_size: 1
 
-  OmniGen_V1:
+  Lumina_Image_2:
     enabled: true
-    pipline_type: "Diffusion_Pipline_Generator"
-    model_name: "Shitao/OmniGen-v1-diffusers"
+    pipline_type: "Lumina2_Generator"
+    model_name: "Alpha-VLLM/Lumina-Image-2.0"
     model_params:
     #      guidance_scale: 7.5
     #      num_inference_steps: 50
     batch_size: 1
 
-  Lumina_Image_2:
+  DMD:
     enabled: true
-    pipline_type: "Diffusion_Pipline_Generator"
-    model_name: "Alpha-VLLM/Lumina-Image-2.0"
+    pipline_type: "DMD_Generator"
+    model_name: "tianweiy/DMD2"
+    model_params:
+    #      guidance_scale: 7.5
+    #      num_inference_steps: 50
+    batch_size: 1
+
+  OmniGen_V1:
+    enabled: true
+    pipline_type: "OmniGen_Generator"
+    model_name: "Shitao/OmniGen-v1-diffusers"
     model_params:
     #      guidance_scale: 7.5
     #      num_inference_steps: 50

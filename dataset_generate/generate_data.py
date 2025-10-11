@@ -72,9 +72,9 @@ def setup_logging(config: Dict[str, Any]) -> logging.Logger:
     return logger
 
 
-def load_captions(file_path: str) -> List[Dict[str, str]]:
+def load_prompts(file_path: str) -> List[Dict[str, str]]:
     """
-    从caption_combined.txt文件加载文本描述
+    从prompt_combined.txt文件加载文本描述
     
     Args:
         file_path: 文件路径
@@ -82,15 +82,15 @@ def load_captions(file_path: str) -> List[Dict[str, str]]:
     Returns:
         包含图像文件名和文本描述的字典列表
     """
-    captions = []
+    prompts = []
     with open(file_path, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            captions.append({
+            prompts.append({
                 'image': row['image'],
-                'caption': row['caption']
+                'prompt': row['prompt']
             })
-    return captions
+    return prompts
 
 
 def load_config(config_path: str) -> Dict[str, Any]:
@@ -107,21 +107,21 @@ def load_config(config_path: str) -> Dict[str, Any]:
         return yaml.safe_load(f)
 
 
-def batch_captions(captions: List[Dict[str, str]], batch_size: int) -> List[Dict[str, Any]]:
+def batch_prompts(prompts: List[Dict[str, str]], batch_size: int) -> List[Dict[str, Any]]:
     """
     将文本描述分批处理
     
     Args:
-        captions: 文本描述列表
+        prompts: 文本描述列表
         batch_size: 批次大小
         
     Returns:
         分批后的文本描述列表，每个批次包含数据和ID
     """
     batches = []
-    for i in range(0, len(captions), batch_size):
+    for i in range(0, len(prompts), batch_size):
         batch = {
-            'data': captions[i:i + batch_size],
+            'data': prompts[i:i + batch_size],
             'id': i // batch_size
         }
         batches.append(batch)
@@ -145,15 +145,15 @@ def save_images(images: List[Any], batch: Dict[str, Any], output_dir: str,
     output_path = os.path.join(output_dir, generator_type)
     os.makedirs(output_path, exist_ok=True)
     
-    captions = batch['data']
+    prompts = batch['data']
     batch_id = batch['id']
     
     img_idx = 0
     saved_count = 0
-    for caption_data in captions:
-        image_name = caption_data['image']
+    for prompt_data in prompts:
+        image_name = prompt_data['image']
         
-        # 当num_images_per_prompt为1时，保持文件名与caption_combined.txt中的一致
+        # 当num_images_per_prompt为1时，保持文件名与prompt_combined.txt中的一致
         # 当num_images_per_prompt大于1时，才添加索引后缀
         if num_images_per_prompt <= 1:
             # 保持文件名与原始文件名一致
@@ -247,8 +247,8 @@ def process_generator_single_gpu(generator_type: str, generator_config: Dict[str
             logger.info(f"Processing {generator_type} batch {batch_id} ({i + 1}/{total_batches}, {progress_percent:.1f}%)")
             
             # 提取文本提示
-            captions = batch['data']
-            prompts = [item['caption'] for item in captions]
+            prompts = batch['data']
+            prompts = [item['prompt'] for item in prompts]
             
             # 生成图像
             try:
@@ -381,8 +381,8 @@ def process_generator_with_accelerate(generator_type: str, generator_config: Dic
                 logger.info(f"Processing {generator_type} batch {batch_id} on process {accelerator.process_index}/{accelerator.num_processes} ({i+1}/{total_batches_in_process})")
                 
                 # 提取文本提示
-                captions = batch['data']
-                prompts = [item['caption'] for item in captions]
+                prompts = batch['data']
+                prompts = [item['prompt'] for item in prompts]
                 
                 # 生成图像
                 try:
@@ -392,14 +392,14 @@ def process_generator_with_accelerate(generator_type: str, generator_config: Dic
                     total_images += len(images)
                     processed_batches += 1
                     completed_batches_in_process += 1
-                    
+
                     # 保存图像
                     save_images(images, batch, output_dir, generator_type, num_images_per_prompt)
                     
                     logger.info(f"{generator_type} completed batch {batch_id} on process {accelerator.process_index}/{accelerator.num_processes}, "
                                f"generated {len(images)} images in {elapsed_time:.2f}s "
                                f"({completed_batches_in_process}/{total_batches_in_process}, {100*completed_batches_in_process/total_batches_in_process:.1f}%)")
-                               
+
                     results.append({
                         'batch_id': batch_id,
                         'images_count': len(images),
@@ -412,7 +412,7 @@ def process_generator_with_accelerate(generator_type: str, generator_config: Dic
             except Exception as e:
                 logger.error(f"Error processing batch in {generator_type} on process {accelerator.process_index}/{accelerator.num_processes}: {e}")
 
-            if i < total_batches_in_process - 1:
+            if i < len(batches)// accelerator.num_processes :
                 # 在每个batch完成后进行torch同步，确保不同进程的进度一致
                 accelerator.wait_for_everyone()
                 if accelerator.is_main_process:
@@ -462,7 +462,7 @@ def process_generator_with_accelerate(generator_type: str, generator_config: Dic
 
 
 def process_generator(generator_type: str, generator_config: Dict[str, Any], 
-                      captions: List[Dict[str, str]], data_config: Dict[str, Any], 
+                      prompts: List[Dict[str, str]], data_config: Dict[str, Any], 
                       output_dir: str, logger: logging.Logger):
     """
     处理单个生成器的图像生成（支持多卡）
@@ -470,7 +470,7 @@ def process_generator(generator_type: str, generator_config: Dict[str, Any],
     Args:
         generator_type: 生成器类型
         generator_config: 生成器配置
-        captions: 文本描述列表
+        prompts: 文本描述列表
         data_config: 数据生成配置
         output_dir: 输出目录
         logger: 日志记录器
@@ -486,14 +486,14 @@ def process_generator(generator_type: str, generator_config: Dict[str, Any],
         return
 
     # 过滤掉已经生成的图像
-    captions = [ caption for caption in captions if not os.path.exists(os.path.join(output_dir, generator_type, caption['image']))]
-    logger.info(f"过滤后剩余 {len(captions)} 个文本描述待处理")
-    if len(captions) == 0:
+    prompts = [ prompt for prompt in prompts if not os.path.exists(os.path.join(output_dir, generator_type, prompt['image']))]
+    logger.info(f"过滤后剩余 {len(prompts)} 个文本描述待处理")
+    if len(prompts) == 0:
         return
     batch_size = generator_config['batch_size']
     
     # 分批处理
-    batches = batch_captions(captions, batch_size)
+    batches = batch_prompts(prompts, batch_size)
     
     # 只有主进程输出日志
     try:
@@ -515,7 +515,7 @@ def main():
     """
     主函数
     """
-    parser = argparse.ArgumentParser(description='Generate images from text captions')
+    parser = argparse.ArgumentParser(description='Generate images from text prompts')
     parser.add_argument('--config', type=str, default='./dataset_config.yaml',
                         help='Path to config file')
     args = parser.parse_args()
@@ -549,11 +549,11 @@ def main():
 
     # 加载文本描述
     input_file = data_config['input_file']
-    captions = load_captions(input_file)
+    prompts = load_prompts(input_file)
 
 
     if accelerator is None or accelerator.is_main_process:
-        logger.info(f"从 {input_file} 加载了 {len(captions)} 个文本描述")
+        logger.info(f"从 {input_file} 加载了 {len(prompts)} 个文本描述")
 
     # 记录开始时间
     start_time = time.time()
@@ -562,7 +562,7 @@ def main():
 
     # 为每个启用的生成器处理数据
     for generator_type, generator_config in generators_config.items():
-        process_generator(generator_type, generator_config, captions, data_config, output_dir, logger)
+        process_generator(generator_type, generator_config, prompts, data_config, output_dir, logger)
 
     # 计算总耗时
     elapsed_time = time.time() - start_time

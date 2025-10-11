@@ -14,7 +14,9 @@ from .sdxl_pipline_generator import StableDiffusionXL_Pipline_Generator
 from .janus_generator import JanusGenerator
 from .hidream_generator import HiDreamGenerator
 from .kolors_generator import Kolors_Generator
-
+from .lumina2_generator import Lumina2_Generator
+from .dmd_generator import DMD_Generator
+from .omnigen_generator import OmniGen_Generator
 __all__ = [
     "BaseGenerator",
     "Diffusion_Pipline_Generator",
@@ -23,5 +25,8 @@ __all__ = [
     "StableDiffusionXL_Pipline_Generator",
     "JanusGenerator",
     "HiDreamGenerator",
-    "Kolors_Generator"
+    "Kolors_Generator",
+    "Lumina2_Generator",
+    "DMD_Generator",
+    "OmniGen_Generator"
 ]

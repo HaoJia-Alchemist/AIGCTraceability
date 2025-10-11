@@ -1,0 +1,22 @@
+# 使用的GPU ID列表 (如果为空则使用CPU)
+gpu_ids: '0,1'  # 示例: 0, 1, 2, 3 表示使用4个GPU
+resume: null
+mixed_precision: "fp16"
+
+seed: 1234
+logging:
+  log_dir: ./logs
+  log_level: "INFO"
+  task_name: "Base"
+  console_output: true
+  checkpoints_total_limit: 1
+
+dataset:
+  root_dir: /home/jh/disk/datasets/AIGCTraceability/
+  dataset_name: DFT30
+  num_workers: 4
+  verbose: true
+  dataset_json_file: /home/jh/disk/workspace/AIGCTraceability/dataset_generate/prompt_unseen_evaluation.json
+
+  mean: [ 0.485, 0.456, 0.406 ]
+  std: [ 0.229, 0.224, 0.225 ]

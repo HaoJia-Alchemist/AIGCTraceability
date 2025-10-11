@@ -1,0 +1,62 @@
+task_name: "efficientnet-b4"
+
+model:
+  name: "efficientnet-b4"
+  pretrained: /home/jh/disk/pretrained/DeepfakeBench/efficientnet-b4-6ed6700e.pth
+  feat_dim: 2048
+  metric_loss_type: "triplet"
+  no_margin: false
+  if_label_smooth: "on"
+  id_loss_weight: 1.0
+  triplet_loss_weight: 1.0
+  i2t_loss_weight: 1.0
+  inference:
+      neck_feat: "after"
+
+train:
+  processor: "base"
+  log_period: 50
+  checkpoint_period: 120
+  eval_period: 120
+  max_epoch: 120
+  checkpoint_dir: null
+
+test:
+  feat_norm: "yes"
+
+
+solver:
+  type: "Adam"
+  base_lr: 0.0003
+  weight_decay: 0.0005
+  weight_decay_bias: 0.0005
+  bias_lr_factor: 0.1
+  large_fc_lr: false
+  momentum: 0.9
+  margin: 0.3
+  center_lr: 0.5
+  center_loss_weight: 0.0005
+  steps: [40, 70]
+  gamma: 0.1
+  warmup_factor: 0.01
+  warmup_iters: 500
+  warmup_method: "linear"
+
+dataset:
+  resolution: 224
+  train_batch_size: 64
+  test_batch_size: 64
+  num_instances: 16
+  sampler: "softmax"
+  use_data_augmentation: true  # Add this flag to enable/disable data augmentation
+  data_aug:
+    flip_prob: 0.5
+    rotate_prob: 0.5
+    rotate_limit: [ -10, 10 ]
+    blur_prob: 0.5
+    blur_limit: [ 3, 7 ]
+    brightness_prob: 0.5
+    brightness_limit: [ -0.1, 0.1 ]
+    contrast_limit: [ -0.1, 0.1 ]
+    quality_lower: 40
+    quality_upper: 100
