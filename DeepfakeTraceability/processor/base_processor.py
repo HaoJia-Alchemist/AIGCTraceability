@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 import logging
 import os.path as osp
+
+import torch
 from accelerate import Accelerator
 
 from utils.meter import AverageMeter
@@ -79,13 +81,14 @@ class BaseProcessor(ABC):
         """
         pass
 
-    def save_model(self, model_path):
+    def save_model(self):
         unwrap_model = self.accelerator.unwrap_model(self.model)
-        unwrap_model.save_model(model_path)
+        torch.save(unwrap_model.cpu().state_dict(), osp.join(self.config["logging"]["log_dir"], "best_model", "model.pth"))
+        self.logger.info("Saved model to {}".format(osp.join(self.config["logging"]["log_dir"], "best_model", "model.pth")))
 
     def load_model(self, model_path):
         unwrap_model = self.accelerator.unwrap_model(self.model)
-        unwrap_model.load_model(model_path)
+        unwrap_model.load_state_dict(torch.load(model_path))
         self.model = self.accelerator.prepare(unwrap_model)
 
     def save_state(self):

@@ -3,6 +3,25 @@ import numpy as np
 import os
 from utils.reranking import re_ranking
 
+def parse_metric_for_print(best_metrics):
+    if best_metrics is None:
+        return "\n"
+    max_key_len = max(len(str(key)) for key in best_metrics.keys()) + 2
+    max_val_len = max(len(str(value)) for value in best_metrics.values()) + 2
+
+    content_lines = []
+    for key, value in best_metrics.items():
+        line = f"| {key:<{max_key_len}} | {value:<{max_val_len}} |"
+        content_lines.append(line)
+    max_line_length = max(len(line) for line in content_lines)
+    result = ""
+    result += "=" * max_line_length + "\n"
+    result += f"| {'Best metric':<{max_key_len + max_val_len + 3}} |\n"
+    result += "=" * max_line_length + "\n"
+    for line in content_lines:
+        result += line + "\n"
+    result += "=" * max_line_length
+    return result
 
 def euclidean_distance(qf, gf):
     m = qf.shape[0]
@@ -45,18 +64,12 @@ def eval_func(distmat, q_df_ids, g_df_ids, max_rank=50):
     all_AP = []
     num_valid_q = 0.  # number of valid query
     for q_idx in range(num_q):
-        # get query pid and camid
+        # get query pid
         q_df_id = q_df_ids[q_idx]
-
-
-        # remove gallery samples that have the same pid and camid with query
-        order = indices[q_idx]  # select one row
-        remove = (g_df_ids[order] == q_df_id)
-        keep = np.invert(remove)
 
         # compute cmc curve
         # binary vector, positions with value 1 are correct matches
-        orig_cmc = matches[q_idx][keep]
+        orig_cmc = matches[q_idx]
         if not np.any(orig_cmc):
             # this condition is true when query identity does not appear in gallery
             continue

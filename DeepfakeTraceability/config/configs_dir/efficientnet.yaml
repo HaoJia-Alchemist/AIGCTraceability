@@ -16,9 +16,9 @@ model:
 train:
   processor: "base"
   log_period: 50
-  checkpoint_period: 120
-  eval_period: 120
-  max_epoch: 120
+  checkpoint_period: 1
+  eval_period: 1
+  max_epoch: 100
   checkpoint_dir: null
 
 test:

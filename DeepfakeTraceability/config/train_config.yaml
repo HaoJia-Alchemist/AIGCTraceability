@@ -1,6 +1,6 @@
 # 使用的GPU ID列表 (如果为空则使用CPU)
 gpu_ids: '0,1'  # 示例: 0, 1, 2, 3 表示使用4个GPU
-resume: null
+resume: /home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability/logs/efficientnet-b4_20251011095315/checkpoint
 mixed_precision: "fp16"
 
 seed: 1234

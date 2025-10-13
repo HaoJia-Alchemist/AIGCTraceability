@@ -5,6 +5,7 @@ from datetime import timedelta
 from accelerate import Accelerator
 import torch
 from tqdm import tqdm
+import os.path as osp
 
 from utils.meter import AverageMeter
 from utils.metrics import R1_mAP_eval
@@ -22,7 +23,7 @@ class Processor(BaseProcessor):
         self.checkpoint_period = self.config["train"]["checkpoint_period"]
         self.eval_period = self.config["train"]["eval_period"]
         self.max_epoch = self.config["train"]["max_epoch"]
-        self.logger = logging.getLogger("Train.Processor")
+        self.logger = logging.getLogger("Train")
         self.loss_meter = AverageMeter()
         self.acc_meter = AverageMeter()
         self.epoch = self.model.epoch if self.accelerator.num_processes==1 else self.model.module.epoch
@@ -35,17 +36,24 @@ class Processor(BaseProcessor):
         self.logger.info('start training')
         all_start_time = time.monotonic()
         self.logger.info("model: {}".format(self.model))
+        best_metrics = {"mAP": 0.0, "Rank@1": 0.0, "Rank@5": 0.0, "Rank@10": 0.0, "Epoch": 0}
         for epoch in range(self.epoch, self.max_epoch):
             self.train_epoch(epoch)
             if epoch % self.checkpoint_period == 0:
                 if self.accelerator.is_main_process:
                     self.save_state()
-            if epoch % self.eval_period == 0:
-                self.do_validate()
+            if epoch % self.eval_period == 0 or epoch == self.max_epoch - 1:
+                cmc, mAP = self.do_validate()
+                if mAP > best_metrics["mAP"]:
+                    best_metrics = {"mAP": mAP, "Rank@1": cmc[0], "Rank@5": cmc[4], "Rank@10": cmc[9], "Epoch": epoch}
+                    self.logger.info("===> Best mAP: {:.3f}, Rank@1: {:.3f}, Rank@5: {:.3f}, Rank@10: {:.3f}, Epoch: {}".format(
+                        best_metrics["mAP"], best_metrics["Rank@1"], best_metrics["Rank@5"], best_metrics["Rank@10"], best_metrics["Epoch"]))
+                    self.save_model()
             self.epoch += 1
         all_end_time = time.monotonic()
         total_time = timedelta(seconds=all_end_time - all_start_time)
         self.logger.info("Total running time: {}".format(total_time))
+        return best_metrics
 
 
 
@@ -90,7 +98,7 @@ class Processor(BaseProcessor):
         self.acc_meter.update(acc, 1)
 
     def do_validate(self):
-        self.logger.info("===> Validation Epoch {} done")
+        self.logger.info("===> Validation Epoch {} done".format(self.epoch))
         start_time = time.time()
         self.model.eval()
         for n_iter, (img, df_id, df_name, img_prompt, img_path) in enumerate(self.val_loader):
@@ -98,7 +106,7 @@ class Processor(BaseProcessor):
                 feat = self.model(img)
                 feat, df_id= self.accelerator.gather_for_metrics((feat, df_id))
                 self.evaluator.update((feat, df_id))
-        cmc, mAP, _, _, _, _, _ = self.evaluator.compute()
+        cmc, mAP, _, _, _, _ = self.evaluator.compute()
         self.logger.info("Validation Results - Epoch: {}".format(self.epoch))
         self.logger.info("mAP: {:.1%}".format(mAP))
         for r in [1, 5, 10]:
@@ -108,3 +116,4 @@ class Processor(BaseProcessor):
         time_per_batch = (end_time - start_time) / len(self.val_loader)
         self.logger.info("===> Validation Epoch {} done. Total time: {:.3f}[s]"
                          .format(self.epoch, end_time - start_time))
+        return cmc, mAP

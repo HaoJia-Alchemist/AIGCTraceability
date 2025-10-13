@@ -17,7 +17,6 @@ from processor import PROCESSOR_FACTORY
 from solver import make_optimizer
 from solver.lr_scheduler import WarmupMultiStepLR
 from utils.logger import create_logger
-from utils.metrics import parse_metric_for_print
 
 
 # from DeepfakeTraceability.datasets import FalDataset
@@ -109,10 +108,7 @@ def main():
         processor.load_state(config["resume"])
         logger.info("Resume from checkpoint: {}".format(config["resume"]))
 
-    best_metrics = processor.do_train()
-    logger.info("Stop Training on best Testing metric \n{}".format(parse_metric_for_print(best_metrics)))
-
-
+    processor.do_train()
 
 
 if __name__ == '__main__':
