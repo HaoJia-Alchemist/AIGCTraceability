@@ -17,17 +17,7 @@ from processor import PROCESSOR_FACTORY
 from solver import make_optimizer
 from solver.lr_scheduler import WarmupMultiStepLR
 from utils.logger import create_logger
-
-
-# from DeepfakeTraceability.datasets import FalDataset
-# from DeepfakeTraceability.datasets import GANBlendingDataset
-# from DeepfakeTraceability.datasets import NaCLDataset
-# from DeepfakeTraceability.datasets import RegeneratedDataset
-# from detectors import DETECTOR
-# from logger import create_logger, RankFilter
-# from metrics.utils import parse_metric_for_print
-# from optimizor.LinearLR import LinearDecayLR
-# from processor import TRAINER
+from utils.metrics import parse_metric_for_print
 
 
 def set_seed(seed):
@@ -65,8 +55,7 @@ def main():
     set_seed(config.get('seed', 1234))
 
     # 创建日志
-    log_file = os.path.join(config.get('log_dir', 'logs'),
-                            f"{config.get('task_name', '')}_{time.strftime('%Y%m%d%H%M%S')}", "train.log")
+    log_file = os.path.join(os.path.dirname(config["model_weights"]), "test.log")
     config["logging"]["log_file"] = log_file
     config["logging"]["log_dir"] = os.path.dirname(log_file)
     logger = create_logger(config['logging'])
@@ -84,31 +73,16 @@ def main():
     # prepare the model
     model = make_model(config['model'], num_classes=num_classes)
     model.to(device)
-    # prepare the loss
-    loss_func, center_criterion = make_loss(config, num_classes=num_classes)
 
-    # prepare the optimizer
-    optimizer, optimizer_center = make_optimizer(config, model, center_criterion)
-
-    # prepare the scheduler
-    scheduler = WarmupMultiStepLR(optimizer, config['solver']['steps'], config['solver']['gamma'],
-                                  config['solver']['warmup_factor'],
-                                  config['solver']['warmup_iters'], config['solver']['warmup_method'])
-
-    model, center_criterion, optimizer, optimizer_center = accelerator.prepare(model, center_criterion, optimizer,
-                                                                               optimizer_center)
-    accelerator.register_for_checkpointing(scheduler)
+    model = accelerator.prepare(model)
 
     # prepare the processor
-    processor_class = PROCESSOR_FACTORY[config['train']['processor']]
-    processor = processor_class(config, model, center_criterion, train_loader, val_loader, optimizer, optimizer_center,
-                                scheduler, loss_func, num_query, logger)
-
-    if config["resume"]:
-        processor.load_state(config["resume"])
-        logger.info("Resume from checkpoint: {}".format(config["resume"]))
-
-    processor.do_train()
+    processor_class = PROCESSOR_FACTORY[config['test']['processor']]
+    processor = processor_class(config, model, val_loader=val_loader, num_query=num_query, accelerator=accelerator)
+    processor.load_model(config["model_weights"])
+    cmc ,mAP = processor.do_validate()
+    best_metrics = {"mAP": mAP, "Rank@1": cmc[0], "Rank@5": cmc[4], "Rank@10": cmc[9]}
+    logger.info("Stop Testing on best Testing metric \n{}".format(parse_metric_for_print(best_metrics)))
 
 
 if __name__ == '__main__':

@@ -17,6 +17,8 @@ from .kolors_generator import Kolors_Generator
 from .lumina2_generator import Lumina2_Generator
 from .dmd_generator import DMD_Generator
 from .omnigen_generator import OmniGen_Generator
+from .proteusv06_generator import ProteusV06_Pipline_Generator
+from .cogview4_generator import CogView4_Pipline_Generator
 __all__ = [
     "BaseGenerator",
     "Diffusion_Pipline_Generator",
@@ -28,5 +30,7 @@ __all__ = [
     "Kolors_Generator",
     "Lumina2_Generator",
     "DMD_Generator",
-    "OmniGen_Generator"
+    "OmniGen_Generator",
+    "ProteusV06_Pipline_Generator",
+    "CogView4_Pipline_Generator"
 ]

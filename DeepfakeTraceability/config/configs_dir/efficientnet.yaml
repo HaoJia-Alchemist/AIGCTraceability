@@ -1,5 +1,5 @@
 task_name: "efficientnet-b4"
-
+model_weights: "/home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability/logs/efficientnet-b4_20251014103313/best_model/model.pth"
 model:
   name: "efficientnet-b4"
   pretrained: /home/jh/disk/pretrained/DeepfakeBench/efficientnet-b4-6ed6700e.pth
@@ -23,11 +23,12 @@ train:
 
 test:
   feat_norm: "yes"
+  processor: "base"
 
 
 solver:
   type: "Adam"
-  base_lr: 0.0003
+  base_lr: 0.003
   weight_decay: 0.0005
   weight_decay_bias: 0.0005
   bias_lr_factor: 0.1
@@ -35,7 +36,7 @@ solver:
   momentum: 0.9
   margin: 0.3
   center_lr: 0.5
-  center_loss_weight: 0.0005
+  center_loss_weight: 0.005
   steps: [40, 70]
   gamma: 0.1
   warmup_factor: 0.01

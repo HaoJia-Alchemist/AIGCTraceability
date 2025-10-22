@@ -286,3 +286,24 @@ generators:
     #      guidance_scale: 7.5
     #      num_inference_steps: 50
     batch_size: 1
+
+  Proteus_V0_6:
+    enabled: true
+    pipline_type: "ProteusV06_Pipline_Generator"
+    model_name: "dataautogpt3/ProteusV0.6"
+    model_params:
+    batch_size: 1
+
+  Dreamlike:
+    enabled: true
+    pipline_type: "Diffusion_Pipline_Generator"
+    model_name: "dreamlike-art/dreamlike-photoreal-2.0"
+    model_params:
+    batch_size: 1
+
+  OpenDalleV1_1:
+    enabled: true
+    pipline_type: "Diffusion_Pipline_Generator"
+    model_name: "dataautogpt3/OpenDalleV1.1"
+    model_params:
+    batch_size: 1

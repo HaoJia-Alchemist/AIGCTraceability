@@ -2,10 +2,8 @@ import logging
 import time
 from datetime import timedelta
 
-from accelerate import Accelerator
 import torch
 from tqdm import tqdm
-import os.path as osp
 
 from utils.meter import AverageMeter
 from utils.metrics import R1_mAP_eval
@@ -15,10 +13,11 @@ from . import PROCESSOR_FACTORY
 
 @PROCESSOR_FACTORY.register_module("base")
 class Processor(BaseProcessor):
-    def __init__(self, config, model, center_criterion, train_loader, val_loader, optimizer, optimizer_center,
-                 scheduler, loss_fn, num_query, writer=None):
+    def __init__(self, config, model, center_criterion=None, train_loader=None, val_loader=None, optimizer=None,
+                 optimizer_center=None,
+                 scheduler=None, loss_fn=None, num_query=None, accelerator=None):
         super(Processor, self).__init__(config, model, center_criterion, train_loader, val_loader, optimizer,
-                                      optimizer_center, scheduler, loss_fn, num_query, writer)
+                                        optimizer_center, scheduler, loss_fn, num_query, accelerator)
         self.log_period = self.config["train"]["log_period"]
         self.checkpoint_period = self.config["train"]["checkpoint_period"]
         self.eval_period = self.config["train"]["eval_period"]
@@ -26,7 +25,7 @@ class Processor(BaseProcessor):
         self.logger = logging.getLogger("Train")
         self.loss_meter = AverageMeter()
         self.acc_meter = AverageMeter()
-        self.epoch = self.model.epoch if self.accelerator.num_processes==1 else self.model.module.epoch
+        self.epoch = self.model.epoch if self.accelerator.num_processes == 1 else self.model.module.epoch
         self.evaluator = R1_mAP_eval(num_query, max_rank=50, feat_norm=config["test"]["feat_norm"])
         self.logger.info('processor init ...')
         self.logger.info(
@@ -46,23 +45,24 @@ class Processor(BaseProcessor):
                 cmc, mAP = self.do_validate()
                 if mAP > best_metrics["mAP"]:
                     best_metrics = {"mAP": mAP, "Rank@1": cmc[0], "Rank@5": cmc[4], "Rank@10": cmc[9], "Epoch": epoch}
-                    self.logger.info("===> Best mAP: {:.3f}, Rank@1: {:.3f}, Rank@5: {:.3f}, Rank@10: {:.3f}, Epoch: {}".format(
-                        best_metrics["mAP"], best_metrics["Rank@1"], best_metrics["Rank@5"], best_metrics["Rank@10"], best_metrics["Epoch"]))
-                    self.save_model()
+                    self.logger.info(
+                        "===> Best mAP: {:.3f}, Rank@1: {:.3f}, Rank@5: {:.3f}, Rank@10: {:.3f}, Epoch: {}".format(
+                            best_metrics["mAP"], best_metrics["Rank@1"], best_metrics["Rank@5"],
+                            best_metrics["Rank@10"], best_metrics["Epoch"]))
+                    if self.accelerator.is_main_process:
+                        self.save_model()
+            self.accelerator.wait_for_everyone()
             self.epoch += 1
         all_end_time = time.monotonic()
         total_time = timedelta(seconds=all_end_time - all_start_time)
         self.logger.info("Total running time: {}".format(total_time))
         return best_metrics
 
-
-
     def train_epoch(self, epoch):
         self.logger.info("===> Epoch[{}] start!".format(epoch))
         start_time = time.time()
         self.loss_meter.reset()
         self.acc_meter.reset()
-        self.evaluator.reset()
         self.model.train()
         for n_iter, data in enumerate(tqdm(self.train_loader, total=len(self.train_loader))):
             self.train_step(data)
@@ -98,13 +98,14 @@ class Processor(BaseProcessor):
         self.acc_meter.update(acc, 1)
 
     def do_validate(self):
-        self.logger.info("===> Validation Epoch {} done".format(self.epoch))
+        self.logger.info("===> Validation Epoch {} start.".format(self.epoch))
         start_time = time.time()
+        self.evaluator.reset()
         self.model.eval()
-        for n_iter, (img, df_id, df_name, img_prompt, img_path) in enumerate(self.val_loader):
+        for n_iter, (img, df_id, df_name, img_prompt, img_path) in enumerate(tqdm(self.val_loader)):
             with torch.no_grad():
                 feat = self.model(img)
-                feat, df_id= self.accelerator.gather_for_metrics((feat, df_id))
+                feat, df_id = self.accelerator.gather_for_metrics((feat, df_id))
                 self.evaluator.update((feat, df_id))
         cmc, mAP, _, _, _, _ = self.evaluator.compute()
         self.logger.info("Validation Results - Epoch: {}".format(self.epoch))

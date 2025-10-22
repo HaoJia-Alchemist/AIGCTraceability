@@ -487,7 +487,7 @@ def process_generator(generator_type: str, generator_config: Dict[str, Any],
 
     # 过滤掉已经生成的图像
     prompts = [ prompt for prompt in prompts if not os.path.exists(os.path.join(output_dir, generator_type, prompt['image']))]
-    logger.info(f"过滤后剩余 {len(prompts)} 个文本描述待处理")
+    logger.info(f"Generator {generator_type} has {len(prompts)} text descriptions remaining to be processed after filtering.")
     if len(prompts) == 0:
         return
     batch_size = generator_config['batch_size']

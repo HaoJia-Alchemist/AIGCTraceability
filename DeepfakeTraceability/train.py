@@ -103,17 +103,16 @@ def main():
     # prepare the processor
     processor_class = PROCESSOR_FACTORY[config['train']['processor']]
     processor = processor_class(config, model, center_criterion, train_loader, val_loader, optimizer, optimizer_center,
-                                scheduler, loss_func, num_query, logger)
+                                scheduler, loss_func, num_query, accelerator)
 
     if config["resume"]:
         processor.load_state(config["resume"])
+        processor.epoch = config["resume_epoch"]
+
         logger.info("Resume from checkpoint: {}".format(config["resume"]))
 
     best_metrics = processor.do_train()
     logger.info("Stop Training on best Testing metric \n{}".format(parse_metric_for_print(best_metrics)))
-
-
-
 
 if __name__ == '__main__':
     main()
