@@ -1,9 +1,9 @@
-task_name: "efficientnet-b4"
-model_weights: /home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability/logs/efficientnet-b4_20251023091235/best_model/model.pth
+task_name: "resnet50"
+model_weights: /home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability/logs/resnet50_20251023151738/best_model/model.pth
 model:
-  name: "efficientnet-b4"
-  pretrained: /home/jh/disk/pretrained/DeepfakeBench/efficientnet-b4-6ed6700e.pth
-  feat_dim: 1792
+  name: "resnet50"
+  pretrained: null
+  feat_dim: 2048
   metric_loss_type: "triplet"
   no_margin: false
   if_label_smooth: "on"
@@ -19,6 +19,7 @@ train:
   checkpoint_period: 1
   eval_period: 1
   max_epoch: 20
+  checkpoint_dir: null
 
 test:
   feat_norm: "yes"

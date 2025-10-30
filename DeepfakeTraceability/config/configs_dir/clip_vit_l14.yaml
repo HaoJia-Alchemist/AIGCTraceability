@@ -1,9 +1,9 @@
-task_name: "efficientnet-b4"
-model_weights: /home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability/logs/efficientnet-b4_20251023091235/best_model/model.pth
+task_name: "clip_vit_l14"
+model_weights: /home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability/logs/clip_vit_l14_20251024102718/best_model/model.pth
 model:
-  name: "efficientnet-b4"
-  pretrained: /home/jh/disk/pretrained/DeepfakeBench/efficientnet-b4-6ed6700e.pth
-  feat_dim: 1792
+  name: "clip_vit_l14"
+  pretrained: null
+  feat_dim: 1024
   metric_loss_type: "triplet"
   no_margin: false
   if_label_smooth: "on"
@@ -44,10 +44,10 @@ solver:
 
 dataset:
   resolution: 224
-  train_batch_size: 64
+  train_batch_size: 48
   test_batch_size: 64
-  num_instances: 16
-  sampler: "softmax"
+  num_instances: 12
+  sampler: "softmax_triplet"
   use_data_augmentation: true  # Add this flag to enable/disable data augmentation
   data_aug:
     flip_prob: 0.5

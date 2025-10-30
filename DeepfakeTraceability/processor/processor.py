@@ -77,6 +77,7 @@ class Processor(BaseProcessor):
 
     def train_step(self, data):
         img, df_id, df_name, img_prompt, img_path = data
+        # self.logger.info(f"Process_ID:{self.accelerator.process_index}, df_id:{df_id}, img_path: {list(zip(df_name,img_path))}")
         self.optimizer.zero_grad()
         self.optimizer_center.zero_grad()
         target = df_id

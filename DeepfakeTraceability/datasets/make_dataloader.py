@@ -1,4 +1,4 @@
-from accelerate import Accelerator
+from accelerate import Accelerator, DataLoaderConfiguration
 
 from datasets import DATASETS_FACTORY
 import torch

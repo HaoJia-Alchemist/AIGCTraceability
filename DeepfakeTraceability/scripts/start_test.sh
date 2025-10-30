@@ -26,4 +26,6 @@ if [ "$NUM_PROCESSES" -gt 1 ]; then
 fi
 
 # 设置环境变量并启动加速器（动态添加多GPU参数）
-CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" test.py --config "./config/configs_dir/efficientnet.yaml"
+#CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" test.py --config "./config/configs_dir/efficientnet.yaml"
+#CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" test.py --config "./config/configs_dir/resnet50.yaml"
+CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" test.py --config "./config/configs_dir/clip_vit_l14.yaml"
