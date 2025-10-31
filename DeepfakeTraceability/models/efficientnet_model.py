@@ -3,6 +3,8 @@ from efficientnet_pytorch import EfficientNet
 from torch import nn
 
 from . import MODEL_FACTORY
+from .base_model import BaseModel
+
 
 def weights_init_kaiming(m):
     classname = m.__class__.__name__
@@ -27,12 +29,9 @@ def weights_init_classifier(m):
             nn.init.constant_(m.bias, 0.0)
 
 @MODEL_FACTORY.register_module("efficientnet-b4")
-class EfficientNetModel(nn.Module):
+class EfficientNetModel(BaseModel):
     def __init__(self, config=None, num_classes=10):
-        super(EfficientNetModel, self).__init__()
-        self.config = config
-        self.num_classes = num_classes
-        self.epoch = 0
+        super(EfficientNetModel, self).__init__(config, num_classes)
         self.in_planes = 1792
         self.efficientnet = EfficientNet.from_pretrained('efficientnet-b4', weights_path=self.config[
             'pretrained'])

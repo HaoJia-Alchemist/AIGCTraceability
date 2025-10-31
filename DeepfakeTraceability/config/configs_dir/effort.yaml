@@ -1,7 +1,8 @@
-task_name: "clip_vit_l14"
-model_weights: /home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability/logs/clip_vit_l14_triplet_train_20251030032115/best_model/model.pth
+task_name: "effort"
+#model_weights: /home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability/logs/clip_vit_l14_triplet_train_20251030032115/best_model/model.pth
+model_weights: null
 model:
-  name: "clip_vit_l14"
+  name: "effort"
   pretrained: null
   feat_dim: 1024
   metric_loss_type: "triplet"

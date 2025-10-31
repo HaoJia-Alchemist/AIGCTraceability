@@ -37,7 +37,7 @@ class Processor(BaseProcessor):
         self.logger.info("model: {}".format(self.model))
         best_metrics = {"mAP": 0.0, "Rank@1": 0.0, "Rank@5": 0.0, "Rank@10": 0.0, "Epoch": 0}
         for epoch in range(self.epoch, self.max_epoch):
-            self.train_epoch(epoch)
+            # self.train_epoch(epoch)
             if epoch % self.checkpoint_period == 0:
                 if self.accelerator.is_main_process:
                     self.save_state()

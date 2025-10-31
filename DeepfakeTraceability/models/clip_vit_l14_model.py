@@ -10,11 +10,14 @@ from collections import defaultdict
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from loss import CenterLoss, TripletLoss, CrossEntropyLabelSmooth
 from . import MODEL_FACTORY
 
 from transformers import AutoProcessor, CLIPModel, ViTModel, ViTConfig
 
-logger = logging.getLogger(__name__)
+from .base_model import BaseModel
+
 
 def weights_init_kaiming(m):
     classname = m.__class__.__name__
@@ -39,9 +42,9 @@ def weights_init_classifier(m):
             nn.init.constant_(m.bias, 0.0)
 
 @MODEL_FACTORY.register_module(module_name='clip_vit_l14')
-class CLIP_ViT_L14_Model(nn.Module):
+class CLIP_ViT_L14_Model(BaseModel):
     def __init__(self, config=None, num_classes=10):
-        super(CLIP_ViT_L14_Model, self).__init__()
+        super(CLIP_ViT_L14_Model, self).__init__(config, num_classes)
         self.config = config
         self.epoch = 0
         self.num_classes = num_classes

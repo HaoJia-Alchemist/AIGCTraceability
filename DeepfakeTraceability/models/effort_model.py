@@ -10,21 +10,42 @@ from collections import defaultdict
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from loss import CenterLoss, CrossEntropyLabelSmooth, TripletLoss
 from . import MODEL_FACTORY
 
 from transformers import AutoProcessor, CLIPModel, ViTModel, ViTConfig
 
-logger = logging.getLogger(__name__)
+from .base_model import BaseModel
+
+def weights_init_kaiming(m):
+    classname = m.__class__.__name__
+    if classname.find('Linear') != -1:
+        nn.init.kaiming_normal_(m.weight, a=0, mode='fan_out')
+        nn.init.constant_(m.bias, 0.0)
+
+    elif classname.find('Conv') != -1:
+        nn.init.kaiming_normal_(m.weight, a=0, mode='fan_in')
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0.0)
+    elif classname.find('BatchNorm') != -1:
+        if m.affine:
+            nn.init.constant_(m.weight, 1.0)
+            nn.init.constant_(m.bias, 0.0)
 
 
 @MODEL_FACTORY.register_module(module_name='effort')
-class EffortDetector(nn.Module):
+class EffortDetector(BaseModel):
     def __init__(self, config=None, num_classes=10):
-        super(EffortDetector, self).__init__()
-        self.config = config
+        super(EffortDetector, self).__init__(config, num_classes)
+        self.in_planes = 1024
+
         self.backbone = self.build_backbone(config)
         self.head = nn.Linear(1024, num_classes)
 
+        self.bottleneck = nn.BatchNorm1d(self.in_planes)
+        self.bottleneck.bias.requires_grad_(False)
+        self.bottleneck.apply(weights_init_kaiming)
 
     def build_backbone(self, config):
         # ⚠⚠⚠ Download CLIP model using the below link
@@ -51,6 +72,53 @@ class EffortDetector(nn.Module):
 
     def classifier(self, features: torch.tensor) -> torch.tensor:
         return self.head(features)
+
+    def make_loss(self, config, num_classes=10):
+        sampler = config['dataset']['sampler']
+        feat_dim = config['model']['feat_dim']
+        center_criterion = CenterLoss(num_classes=num_classes, feat_dim=feat_dim)
+        if 'triplet' in config['model']['metric_loss_type']:
+            if config['model']['no_margin']:
+                triplet = TripletLoss()
+                self.logger.info("using soft triplet loss for training")
+            else:
+                triplet = TripletLoss(config['solver']['margin'])  # triplet loss
+                self.logger.info("using triplet loss with margin:{}".format(config['solver']['margin']))
+        xent = CrossEntropyLabelSmooth(num_classes=num_classes)
+        def loss_func(score, feat, target, i2tscore=None):
+            if config['model']['metric_loss_type'] == 'triplet':
+                if config['model']['if_label_smooth'] == 'on':
+                    if isinstance(score, list):
+                        ID_LOSS = [xent(scor, target) for scor in score[0:]]
+                        ID_LOSS = sum(ID_LOSS)
+                    else:
+                        ID_LOSS = xent(score, target)
+
+                    if isinstance(feat, list):
+                        TRI_LOSS = [triplet(feats, target)[0] for feats in feat[0:]]
+                        TRI_LOSS = sum(TRI_LOSS)
+                    else:
+                        TRI_LOSS = triplet(feat, target)[0]
+
+                    loss = config['model']['id_loss_weight'] * ID_LOSS + config['model']['triplet_loss_weight'] * TRI_LOSS
+
+                    if i2tscore != None:
+                        I2TLOSS = xent(i2tscore, target)
+                        loss = config['model']['i2t_loss_weight'] * I2TLOSS + loss
+
+
+                    lambda_reg = 1.0
+                    reg_term = 0.0
+                    num_reg = 0
+                    for module in self.backbone.modules():
+                        if isinstance(module, SVDResidualLinear):
+                            reg_term += module.compute_orthogonal_loss()
+                            reg_term += module.compute_keepsv_loss()
+                            num_reg += 1
+                    loss += lambda_reg * reg_term / num_reg
+
+                    return loss
+        return loss_func, center_criterion
 
     # def get_losses(self, data_dict: dict, pred_dict: dict) -> dict:
     #    label = data_dict['label']
@@ -93,37 +161,19 @@ class EffortDetector(nn.Module):
         loss2 /= len(weight_sum_dict.keys())
         return loss2
 
-    def get_losses(self, data_dict: dict, pred_dict: dict) -> dict:
-        label = data_dict['label']  # Tensor of shape [batch_size]
-        pred = pred_dict['cls']  # Tensor of shape [batch_size, num_classes]
+    def forward(self, x) -> dict:
+        img_feature = self.features(x)
+        feat = self.bottleneck(img_feature)
+        if self.training:
+            cls_score = self.classifier(feat)
+            return cls_score, img_feature
 
-        # Compute overall loss using all samples
-        loss = self.loss_func(pred, label)
+        else:
+            if self.config["inference"]["neck_feat"] == 'after':
+                return feat
+            else:
+                return img_feature
 
-
-        # loss2 = self.compute_weight_loss()
-        # overall_loss = loss + loss2
-
-        # Return a dictionary with all losses
-        loss_dict = {
-            'overall': loss,
-            'real_loss': loss_real,
-            'fake_loss': loss_fake,
-            # 'erank_loss': loss2
-        }
-        return loss_dict
-
-    def forward(self, data_dict: dict, inference=False) -> dict:
-        # get the features by backbone
-        features = self.features(data_dict)
-        # get the prediction by classifier
-        pred = self.classifier(features)
-        # get the probability of the pred
-        prob = torch.softmax(pred, dim=1)[:, 1]
-        # build the prediction dict for each output
-        pred_dict = {'cls': pred, 'prob': prob, 'feat': features}
-
-        return pred_dict
 
 
 # Custom module to represent the residual using SVD components

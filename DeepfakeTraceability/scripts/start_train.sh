@@ -29,4 +29,5 @@ fi
 #CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" train.py --config "./config/configs_dir/efficientnet.yaml"
 #CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" train.py --config "./config/configs_dir/resnet50.yaml"
 #CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" train.py --config "./config/configs_dir/clip_vit_l14.yaml"
-CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" train.py --config "./config/configs_dir/clip_vit_l14.yaml" --opt task_name='clip_vit_l14_triplet_train' dataset.sampler='softmax_triplet'
+#CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" train.py --config "./config/configs_dir/clip_vit_l14.yaml" --opt task_name='clip_vit_l14_triplet_train' dataset.sampler='softmax_triplet'
+CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" train.py --config "./config/configs_dir/effort.yaml" --opt task_name='effort_train' dataset.sampler='softmax_triplet'

@@ -86,7 +86,7 @@ def main():
     model = make_model(config['model'], num_classes=num_classes)
     model.to(device)
     # prepare the loss
-    loss_func, center_criterion = make_loss(config, num_classes=num_classes)
+    loss_func, center_criterion = model.make_loss(config, num_classes=num_classes)
 
     # prepare the optimizer
     optimizer, optimizer_center = make_optimizer(config, model, center_criterion)

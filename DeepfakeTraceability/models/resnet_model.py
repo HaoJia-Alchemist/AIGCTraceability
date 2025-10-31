@@ -1,8 +1,10 @@
 import torch
 from torchvision.models import resnet50, ResNet50_Weights
 from torch import nn
-
+from torch.nn import functional as F
+from loss import TripletLoss, CenterLoss, CrossEntropyLabelSmooth
 from . import MODEL_FACTORY
+from .base_model import BaseModel
 
 
 def weights_init_kaiming(m):
@@ -30,12 +32,9 @@ def weights_init_classifier(m):
 
 
 @MODEL_FACTORY.register_module("resnet50")
-class ResNetModel(nn.Module):
+class ResNetModel(BaseModel):
     def __init__(self, config=None, num_classes=10):
-        super(ResNetModel, self).__init__()
-        self.config = config
-        self.num_classes = num_classes
-        self.epoch = 0
+        super(ResNetModel, self).__init__(config, num_classes)
         self.in_planes = 2048
         
         # 使用torchvision的resnet50作为backbone
@@ -52,6 +51,8 @@ class ResNetModel(nn.Module):
         self.bottleneck = nn.BatchNorm1d(self.in_planes)
         self.bottleneck.bias.requires_grad_(False)
         self.bottleneck.apply(weights_init_kaiming)
+
+
 
     def forward(self, x):
         # 提取特征
