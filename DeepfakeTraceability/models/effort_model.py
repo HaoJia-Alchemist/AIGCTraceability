@@ -107,6 +107,7 @@ class EffortDetector(BaseModel):
                         loss = config['model']['i2t_loss_weight'] * I2TLOSS + loss
 
 
+<<<<<<< HEAD
                     # lambda_reg = 1.0
                     # reg_term = 0.0
                     # num_reg = 0
@@ -116,6 +117,17 @@ class EffortDetector(BaseModel):
                     #         reg_term += module.compute_keepsv_loss()
                     #         num_reg += 1
                     # loss += lambda_reg * reg_term / num_reg
+=======
+                    lambda_reg = 1.0
+                    reg_term = 0.0
+                    num_reg = 0
+                    for module in self.backbone.modules():
+                        if isinstance(module, SVDResidualLinear):
+                            reg_term += module.compute_orthogonal_loss()
+                            reg_term += module.compute_keepsv_loss()
+                            num_reg += 1
+                    loss += lambda_reg * reg_term / num_reg
+>>>>>>> d44a48f6e3377ca4ca378484fc4c034268057bb8
 
                     return loss
         return loss_func, center_criterion
@@ -169,7 +181,11 @@ class EffortDetector(BaseModel):
             return cls_score, img_feature
 
         else:
+<<<<<<< HEAD
             if self.config["test"]["neck_feat"] == 'after':
+=======
+            if self.config["inference"]["neck_feat"] == 'after':
+>>>>>>> d44a48f6e3377ca4ca378484fc4c034268057bb8
                 return feat
             else:
                 return img_feature

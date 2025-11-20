@@ -1,5 +1,9 @@
 # 使用的GPU ID列表 (如果为空则使用CPU)
+<<<<<<< HEAD
 gpu_ids: '0,1'  # 示例: 0, 1, 2, 3 表示使用4个GPU
+=======
+gpu_ids: '1,2'  # 示例: 0, 1, 2, 3 表示使用4个GPU
+>>>>>>> d44a48f6e3377ca4ca378484fc4c034268057bb8
 #resume: /home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability/logs/efficientnet-b4_20251014211353/checkpoint
 #resume_epoch: 15
 resume: null
