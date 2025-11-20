@@ -198,6 +198,7 @@ class CLIP_ViT_L14_Model_Prompt(BaseModel):
                     lr = config['solver']['stage2']['base_lr'] * 2
                     print('Using two times learning rate for fc ')
 
+
             params += [{"params": [value], "lr": lr, "weight_decay": weight_decay}]
             keys += [key]
         if config['solver']['stage2']['type'] == 'SGD':
