@@ -1,0 +1,79 @@
+task_name: "clip_vit_l14"
+#model_weights: /home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability/logs/clip_vit_l14_triplet_train_20251030032115/best_model/model.pth
+mdoel_weights: null
+model:
+  name: "CLIP_ViT_L14_Model_Prompt"
+  backbone: "ViT-L/14"
+  pretrained: null
+  feat_dim: 1024
+  stride_size: 14
+  metric_loss_type: "triplet"
+  no_margin: false
+  if_label_smooth: "on"
+  id_loss_weight: 1.0
+  triplet_loss_weight: 1.0
+  i2t_loss_weight: 1.0
+
+
+train:
+  processor: "prompt_learn"
+  log_period: 50
+  checkpoint_period: 1
+  eval_period: 1
+  max_epoch_stage1: 5
+  max_epoch_stage2: 20
+
+test:
+  feat_norm: "yes"
+  processor: "base"
+  neck_feat: "after"
+  re_ranking: true
+
+
+solver:
+  margin: 0.3
+  stage1:
+    type: "Adam"
+    base_lr: 0.003
+    weight_decay: 0.0005
+    weight_decay_bias: 0.0005
+    momentum: 0.9
+    lr_min: 1e-6
+    warmup_lr_init: 0.00001
+    warmup_epoch: 3
+  stage2:
+    type: "Adam"
+    base_lr: 0.003
+    weight_decay: 0.0005
+    weight_decay_bias: 0.0005
+    momentum: 0.9
+    bias_lr_factor: 0.1
+    large_fc_lr: true
+    center_lr: 0.5
+    center_loss_weight: 0.005
+    steps: [10, 15]
+    gamma: 0.1
+    warmup_factor: 0.01
+    warmup_iters: 500
+    warmup_method: "linear"
+
+dataset:
+  name: "DFT30"
+  resolution: 224
+  train_batch_size: 48
+  test_batch_size: 64
+  num_instances: 12
+  num_classes: 15
+  sampler: "softmax_triplet"
+  use_data_augmentation: true  # Add this flag to enable/disable data augmentation
+  data_aug:
+    flip_prob: 0.5
+    rotate_prob: 0.5
+    rotate_limit: [ -10, 10 ]
+    blur_prob: 0.5
+    blur_limit: [ 3, 7 ]
+    brightness_prob: 0.5
+    brightness_limit: [ -0.1, 0.1 ]
+    contrast_limit: [ -0.1, 0.1 ]
+    quality_lower: 40
+    quality_upper: 100

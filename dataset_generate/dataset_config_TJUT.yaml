@@ -1,0 +1,231 @@
+# 数据集生成配置文件
+
+# 数据生成配置
+data_generation:
+  # 输入文本文件路径
+  input_file: "./caption_combined.txt"
+
+  # 输出目录
+  output_dir: "/jsj_zyb/jh/datasets/AIGCTraceability/generated"
+
+  # 使用的GPU ID列表 (如果为空则使用CPU)
+  gpu_ids: '0,1'  # 示例: 0, 1, 2, 3 表示使用4个GPU
+
+  # 生成图像的数量 (如果大于1，则对每个prompt生成多张图片)
+  num_images_per_prompt: 1
+
+  # 日志配置
+  logging:
+    # 日志级别: DEBUG, INFO, WARNING, ERROR, CRITICAL
+    level: "INFO"
+
+    # 日志文件路径
+    file: "logs/generation.log"
+
+    # 是否在控制台输出日志
+    console_output: true
+
+# 生成器配置
+generators:
+  StableDiffusionV1_5:
+    enabled: false
+    pipline_type: "Diffusion_Pipline_Generator"
+    model_name: "sd-legacy/stable-diffusion-v1-5"
+    model_params:
+      guidance_scale: 7.5
+      num_inference_steps: 50
+    batch_size: 64
+
+  FLUX_1_Dev:
+    enabled: false
+    pipline_type: "Diffusion_Pipline_Generator"
+    model_name: "black-forest-labs/FLUX.1-dev"
+    model_params:
+      guidance_scale: 7.5
+      num_inference_steps: 50
+    batch_size: 2
+
+  StableDiffusion_Turbo:
+    enabled: false
+    pipline_type: "Diffusion_Pipline_Generator"
+    model_name: "stabilityai/sd-turbo"
+    model_params:
+      guidance_scale: 7.5
+      num_inference_steps: 50
+    batch_size: 48
+
+  StableDiffusion_XL_Turbo:
+    enabled: false
+    pipline_type: "Diffusion_Pipline_Generator"
+    model_name: "stabilityai/sdxl-turbo"
+    model_params:
+      guidance_scale: 7.5
+      num_inference_steps: 50
+    batch_size: 16
+
+  StableDiffusionXL_Base_1_0:
+    enabled: false
+    pipline_type: "Diffusion_Pipline_Generator"
+    model_name: "stabilityai/stable-diffusion-xl-base-1.0"
+    model_params:
+      guidance_scale: 7.5
+      num_inference_steps: 50
+    batch_size: 8
+
+  QwenImage_GGUF_Q8:
+    enabled: false
+    pipline_type: "QwenImage_Generator"
+    model_name: "Qwen/Qwen-Image"
+    model_params:
+      gguf_quantization_file: "https://huggingface.co/city96/Qwen-Image-gguf/blob/main/qwen-image-Q8_0.gguf"
+      height: 512
+      width: 512
+    batch_size: 1
+
+  StableDiffusionV2_1:
+    enabled: false
+    pipline_type: "Diffusion_Pipline_Generator"
+    model_name: "stabilityai/stable-diffusion-2-1"
+    model_params:
+      guidance_scale: 7.5
+      num_inference_steps: 50
+    batch_size: 8
+
+  StableDiffusionV1_4:
+    enabled: false
+    pipline_type: "Diffusion_Pipline_Generator"
+    model_name: "CompVis/stable-diffusion-v1-4"
+    model_params:
+      guidance_scale: 7.5
+      num_inference_steps: 50
+    batch_size: 8
+
+  PlayGroundV2_5:
+    enabled: false
+    pipline_type: "Diffusion_Pipline_Generator"
+    model_name: "playgroundai/playground-v2.5-1024px-aesthetic"
+    model_params:
+      guidance_scale: 7.5
+      num_inference_steps: 50
+    batch_size: 2
+
+  FLUX_1_Schnell_GGUF_Q8:
+    enabled: false
+    pipline_type: "FLUX_1_Generator"
+    model_name: "black-forest-labs/FLUX.1-schnell"
+    model_params:
+      gguf_quantization_file: "https://huggingface.co/city96/FLUX.1-schnell-gguf/blob/main/flux1-schnell-Q8_0.gguf"
+    batch_size: 1
+
+  StableDiffusionV3_5_Medium:
+    enabled: true
+    pipline_type: "Diffusion_Pipline_Generator"
+    model_name: "stabilityai/stable-diffusion-3.5-medium"
+    model_params:
+#      guidance_scale: 7.5
+#      num_inference_steps: 50
+    batch_size: 32
+
+  StableDiffusionV3_5_Large:
+    enabled: true
+    pipline_type: "Diffusion_Pipline_Generator"
+    model_name: "stabilityai/stable-diffusion-3.5-large"
+    model_params:
+#      guidance_scale: 7.5
+#      num_inference_steps: 50
+    batch_size: 8
+
+  StableDiffusionV3_Medium:
+    enabled: true
+    pipline_type: "Diffusion_Pipline_Generator"
+    model_name: "stabilityai/stable-diffusion-3-medium-diffusers"
+    model_params:
+#      guidance_scale: 7.5
+#      num_inference_steps: 50
+    batch_size: 32
+
+  ProtenusV0_3:
+    enabled: false
+    pipline_type: "Diffusion_Pipline_Generator"
+    model_name: "dataautogpt3/ProteusV0.3"
+    model_params:
+#      guidance_scale: 7.5
+#      num_inference_steps: 50
+    batch_size: 6
+
+  Realistic_Vision_V5_1_noVAE:
+    enabled: false
+    pipline_type: "Diffusion_Pipline_Generator"
+    model_name: "SG161222/Realistic_Vision_V5.1_noVAE"
+    model_params:
+#      guidance_scale: 7.5
+#      num_inference_steps: 50
+    batch_size: 32
+
+  Juggernaut_XL_v9:
+    enabled: false
+    pipline_type: "StableDiffusionXL_Pipline_Generator"
+    model_name: "RunDiffusion/Juggernaut-XL-v9"
+    model_params:
+      single_file_url: "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9/blob/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors"
+#      guidance_scale: 7.5
+#      num_inference_steps: 50
+    batch_size: 8
+
+  Janus_Pro_7B:
+    enabled: false
+    pipline_type: "Janus_Generator"
+    model_name: "deepseek-ai/Janus-Pro-7B"
+    model_params:
+      temperature: 1.0
+      parallel_size: 1
+      cfg_weight: 5.0
+      image_token_num_per_image: 576
+      img_size: 384
+      patch_size: 16
+    batch_size: 1
+
+  HiDream_I1_Full:
+    enabled: false
+    pipline_type: "Diffusion_Pipline_Generator"
+    model_name: "HiDream-ai/HiDream-I1-Full"
+    model_params:
+#      guidance_scale: 7.5
+#      num_inference_steps: 50
+    batch_size: 1
+
+  FLUX_1_Kera_Dev:
+    enabled: false
+    pipline_type: "Diffusion_Pipline_Generator"
+    model_name: "black-forest-labs/FLUX.1-Krea-dev"
+    model_params:
+    #      guidance_scale: 7.5
+    #      num_inference_steps: 50
+    batch_size: 4
+
+  Chroma1_Base:
+    enabled: false
+    pipline_type: "Diffusion_Pipline_Generator"
+    model_name: "lodestones/Chroma1-Base"
+    model_params:
+    #      guidance_scale: 7.5
+    #      num_inference_steps: 50
+    batch_size: 1
+
+  Kolors:
+    enabled: true
+    pipline_type: "Kolors_Generator"
+    model_name: "Kwai-Kolors/Kolors"
+    model_params:
+    #      guidance_scale: 7.5
+    #      num_inference_steps: 50
+    batch_size: 4
+
+  OmniGen_V1:
+    enabled: true
+    pipline_type: "Diffusion_Pipline_Generator"
+    model_name: "Shitao/OmniGen-v1"
+    model_params:
+    #      guidance_scale: 7.5
+    #      num_inference_steps: 50
+    batch_size: 1
