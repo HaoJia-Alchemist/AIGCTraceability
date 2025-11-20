@@ -10,11 +10,6 @@ model:
   id_loss_weight: 1.0
   triplet_loss_weight: 1.0
   i2t_loss_weight: 1.0
-<<<<<<< HEAD
-=======
-  inference:
-      neck_feat: "after"
->>>>>>> d44a48f6e3377ca4ca378484fc4c034268057bb8
 
 train:
   processor: "base"
@@ -27,11 +22,8 @@ train:
 test:
   feat_norm: "yes"
   processor: "base"
-<<<<<<< HEAD
   neck_feat: "after"
   re_ranking: true
-=======
->>>>>>> d44a48f6e3377ca4ca378484fc4c034268057bb8
 
 
 solver:

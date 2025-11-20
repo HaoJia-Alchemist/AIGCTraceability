@@ -83,21 +83,13 @@ def main():
     train_loader, train_loader_normal, val_loader, num_query, num_classes = make_dataloader(config['dataset'])
 
     # prepare the model
-<<<<<<< HEAD
     model = make_model(config, num_classes=num_classes)
-=======
-    model = make_model(config['model'], num_classes=num_classes)
->>>>>>> d44a48f6e3377ca4ca378484fc4c034268057bb8
     model.to(device)
     # prepare the loss
     loss_func, center_criterion = model.make_loss(config, num_classes=num_classes)
 
     # prepare the optimizer
-<<<<<<< HEAD
     optimizer, optimizer_center = model.make_optimizer(config, model, center_criterion)
-=======
-    optimizer, optimizer_center = make_optimizer(config, model, center_criterion)
->>>>>>> d44a48f6e3377ca4ca378484fc4c034268057bb8
 
     # prepare the scheduler
     scheduler = WarmupMultiStepLR(optimizer, config['solver']['steps'], config['solver']['gamma'],

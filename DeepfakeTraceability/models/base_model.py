@@ -1,9 +1,5 @@
 import logging
-
-<<<<<<< HEAD
 import torch
-=======
->>>>>>> d44a48f6e3377ca4ca378484fc4c034268057bb8
 from torch import nn
 from torch.nn import functional as F
 from loss import CenterLoss, TripletLoss, CrossEntropyLabelSmooth
@@ -92,7 +88,7 @@ class BaseModel(nn.Module):
         else:
             self.logger.error('expected sampler should be softmax, triplet, softmax_triplet or softmax_triplet_center'
                          'but got {}'.format(config['dataset']['sampler']))
-<<<<<<< HEAD
+
         return loss_func, center_criterion
 
     def make_optimizer(self, config, model, center_criterion):
@@ -122,6 +118,3 @@ class BaseModel(nn.Module):
         optimizer_center = torch.optim.SGD(center_criterion.parameters(), lr=config["solver"]['center_lr'])
 
         return optimizer, optimizer_center
-=======
-        return loss_func, center_criterion
->>>>>>> d44a48f6e3377ca4ca378484fc4c034268057bb8

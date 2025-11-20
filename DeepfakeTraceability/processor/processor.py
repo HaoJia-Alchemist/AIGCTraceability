@@ -26,11 +26,7 @@ class Processor(BaseProcessor):
         self.loss_meter = AverageMeter()
         self.acc_meter = AverageMeter()
         self.epoch = self.model.epoch if self.accelerator.num_processes == 1 else self.model.module.epoch
-<<<<<<< HEAD
         self.evaluator = R1_mAP_eval(num_query, max_rank=50, feat_norm=config["test"]["feat_norm"], reranking=self.config["test"]["re_ranking"])
-=======
-        self.evaluator = R1_mAP_eval(num_query, max_rank=50, feat_norm=config["test"]["feat_norm"])
->>>>>>> d44a48f6e3377ca4ca378484fc4c034268057bb8
         self.logger.info('processor init ...')
         self.logger.info(
             f'log_period: {self.log_period}, checkpoint_period: {self.checkpoint_period}, eval_period: {self.eval_period}, max_epoch: {self.max_epoch}')
@@ -41,11 +37,7 @@ class Processor(BaseProcessor):
         self.logger.info("model: {}".format(self.model))
         best_metrics = {"mAP": 0.0, "Rank@1": 0.0, "Rank@5": 0.0, "Rank@10": 0.0, "Epoch": 0}
         for epoch in range(self.epoch, self.max_epoch):
-<<<<<<< HEAD
             self.train_epoch(epoch)
-=======
-            # self.train_epoch(epoch)
->>>>>>> d44a48f6e3377ca4ca378484fc4c034268057bb8
             if epoch % self.checkpoint_period == 0:
                 if self.accelerator.is_main_process:
                     self.save_state()
@@ -113,16 +105,10 @@ class Processor(BaseProcessor):
         self.model.eval()
         for n_iter, (img, df_id, df_name, img_prompt, img_path) in enumerate(tqdm(self.val_loader)):
             with torch.no_grad():
-<<<<<<< HEAD
                 with self.accelerator.autocast():
                     feat = self.model(img)
                     feat, df_id = self.accelerator.gather_for_metrics((feat, df_id))
                     self.evaluator.update((feat, df_id))
-=======
-                feat = self.model(img)
-                feat, df_id = self.accelerator.gather_for_metrics((feat, df_id))
-                self.evaluator.update((feat, df_id))
->>>>>>> d44a48f6e3377ca4ca378484fc4c034268057bb8
         cmc, mAP, _, _, _, _ = self.evaluator.compute()
         self.logger.info("Validation Results - Epoch: {}".format(self.epoch))
         self.logger.info("mAP: {:.1%}".format(mAP))
