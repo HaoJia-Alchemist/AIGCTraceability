@@ -55,7 +55,11 @@ class EfficientNetModel(BaseModel):
             return cls_score, img_feature
 
         else:
+<<<<<<< HEAD
             if self.config["test"]["neck_feat"] == 'after':
+=======
+            if self.config["inference"]["neck_feat"] == 'after':
+>>>>>>> d44a48f6e3377ca4ca378484fc4c034268057bb8
                 return feat
             else:
                 return img_feature
