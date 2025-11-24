@@ -7,7 +7,7 @@ from datasets.base_dataset import ImageDataset, BaseImageDataset
 from .sampler import RandomDeepfakeSampler
 import logging
 # 创建日志记录器
-logger = logging.getLogger('Train')
+logger = logging.getLogger(__name__)
 
 def collate_fn(batch):
     """

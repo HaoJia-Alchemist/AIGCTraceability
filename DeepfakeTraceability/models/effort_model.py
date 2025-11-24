@@ -18,6 +18,8 @@ from transformers import AutoProcessor, CLIPModel, ViTModel, ViTConfig
 
 from .base_model import BaseModel
 
+logger = logging.getLogger(__name__)
+
 def weights_init_kaiming(m):
     classname = m.__class__.__name__
     if classname.find('Linear') != -1:
@@ -80,10 +82,10 @@ class EffortDetector(BaseModel):
         if 'triplet' in config['model']['metric_loss_type']:
             if config['model']['no_margin']:
                 triplet = TripletLoss()
-                self.logger.info("using soft triplet loss for training")
+                logger.info("using soft triplet loss for training")
             else:
                 triplet = TripletLoss(config['solver']['margin'])  # triplet loss
-                self.logger.info("using triplet loss with margin:{}".format(config['solver']['margin']))
+                logger.info("using triplet loss with margin:{}".format(config['solver']['margin']))
         xent = CrossEntropyLabelSmooth(num_classes=num_classes)
         def loss_func(score, feat, target, i2tscore=None):
             if config['model']['metric_loss_type'] == 'triplet':

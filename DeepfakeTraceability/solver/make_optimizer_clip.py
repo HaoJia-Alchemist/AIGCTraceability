@@ -13,7 +13,7 @@ def make_optimizer(config, model, center_criterion):
         if config["solver"]['large_fc_lr']:
             if "classifier" in key or "arcface" in key:
                 lr = config["solver"]['base_lr'] * 2
-                print('Using two times learning rate for fc ')
+                logger.info('Using two times learning rate for fc ')
 
         params += [{"params": [value], "lr": lr, "weight_decay": weight_decay}]
 

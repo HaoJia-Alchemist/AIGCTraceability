@@ -71,8 +71,8 @@ def main():
     train_loader, train_loader_normal, val_loader, num_query, num_classes = make_dataloader(config['dataset'])
 
     # prepare the model
-    model = make_model(config['model'], num_classes=num_classes)
-    model.to(device)
+    model = make_model(config, num_classes=num_classes)
+    model = model.float()
 
     model = accelerator.prepare(model)
 

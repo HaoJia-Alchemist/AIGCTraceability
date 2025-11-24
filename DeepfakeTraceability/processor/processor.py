@@ -10,6 +10,7 @@ from utils.metrics import R1_mAP_eval
 from . import BaseProcessor
 from . import PROCESSOR_FACTORY
 
+logger = logging.getLogger(__name__)
 
 @PROCESSOR_FACTORY.register_module("base")
 class Processor(BaseProcessor):
@@ -21,20 +22,19 @@ class Processor(BaseProcessor):
         self.log_period = self.config["train"]["log_period"]
         self.checkpoint_period = self.config["train"]["checkpoint_period"]
         self.eval_period = self.config["train"]["eval_period"]
-        self.max_epoch = self.config["train"]["max_epoch"]
-        self.logger = logging.getLogger("Train")
+        self.max_epoch =getattr(self.config["train"], "max_epoch", None)
         self.loss_meter = AverageMeter()
         self.acc_meter = AverageMeter()
         self.epoch = self.model.epoch if self.accelerator.num_processes == 1 else self.model.module.epoch
         self.evaluator = R1_mAP_eval(num_query, max_rank=50, feat_norm=config["test"]["feat_norm"], reranking=self.config["test"]["re_ranking"])
-        self.logger.info('processor init ...')
-        self.logger.info(
+        logger.info('processor init ...')
+        logger.info(
             f'log_period: {self.log_period}, checkpoint_period: {self.checkpoint_period}, eval_period: {self.eval_period}, max_epoch: {self.max_epoch}')
 
     def do_train(self):
-        self.logger.info('start training')
+        logger.info('start training')
         all_start_time = time.monotonic()
-        self.logger.info("model: {}".format(self.model))
+        logger.info("model: {}".format(self.model))
         best_metrics = {"mAP": 0.0, "Rank@1": 0.0, "Rank@5": 0.0, "Rank@10": 0.0, "Epoch": 0}
         for epoch in range(self.epoch, self.max_epoch):
             self.train_epoch(epoch)
@@ -45,7 +45,7 @@ class Processor(BaseProcessor):
                 cmc, mAP = self.do_validate()
                 if mAP > best_metrics["mAP"]:
                     best_metrics = {"mAP": mAP, "Rank@1": cmc[0], "Rank@5": cmc[4], "Rank@10": cmc[9], "Epoch": epoch}
-                    self.logger.info(
+                    logger.info(
                         "===> Best mAP: {:.3f}, Rank@1: {:.3f}, Rank@5: {:.3f}, Rank@10: {:.3f}, Epoch: {}".format(
                             best_metrics["mAP"], best_metrics["Rank@1"], best_metrics["Rank@5"],
                             best_metrics["Rank@10"], best_metrics["Epoch"]))
@@ -55,11 +55,11 @@ class Processor(BaseProcessor):
             self.epoch += 1
         all_end_time = time.monotonic()
         total_time = timedelta(seconds=all_end_time - all_start_time)
-        self.logger.info("Total running time: {}".format(total_time))
+        logger.info("Total running time: {}".format(total_time))
         return best_metrics
 
     def train_epoch(self, epoch):
-        self.logger.info("===> Epoch[{}] start!".format(epoch))
+        logger.info("===> Epoch[{}] start!".format(epoch))
         start_time = time.time()
         self.loss_meter.reset()
         self.acc_meter.reset()
@@ -67,17 +67,17 @@ class Processor(BaseProcessor):
         for n_iter, data in enumerate(tqdm(self.train_loader, total=len(self.train_loader))):
             self.train_step(data)
             if (n_iter + 1) % self.log_period == 0:
-                self.logger.info("Epoch[{}] Iteration[{}/{}] Loss: {:.3f}, Acc: {:.3f}, Base Lr: {:.2e}"
+                logger.info("Epoch[{}] Iteration[{}/{}] Loss: {:.3f}, Acc: {:.3f}, Base Lr: {:.2e}"
                                  .format(epoch, (n_iter + 1), len(self.train_loader),
                                          self.loss_meter.avg, self.acc_meter.avg, self.scheduler.get_lr()[0]))
         end_time = time.time()
         time_per_batch = (end_time - start_time) / len(self.train_loader)
-        self.logger.info("Epoch {} done. Time per batch: {:.3f}[s] Speed: {:.1f}[samples/s]"
+        logger.info("Epoch {} done. Time per batch: {:.3f}[s] Speed: {:.1f}[samples/s]"
                          .format(epoch, time_per_batch, self.config["dataset"]["train_batch_size"] / time_per_batch))
 
     def train_step(self, data):
         img, df_id, df_name, img_prompt, img_path = data
-        # self.logger.info(f"Process_ID:{self.accelerator.process_index}, df_id:{df_id}, img_path: {list(zip(df_name,img_path))}")
+        # logger.info(f"Process_ID:{self.accelerator.process_index}, df_id:{df_id}, img_path: {list(zip(df_name,img_path))}")
         self.optimizer.zero_grad()
         self.optimizer_center.zero_grad()
         target = df_id
@@ -99,7 +99,7 @@ class Processor(BaseProcessor):
         self.acc_meter.update(acc, 1)
 
     def do_validate(self):
-        self.logger.info("===> Validation Epoch {} start.".format(self.epoch))
+        logger.info("===> Validation Epoch {} start.".format(self.epoch))
         start_time = time.time()
         self.evaluator.reset()
         self.model.eval()
@@ -110,13 +110,13 @@ class Processor(BaseProcessor):
                     feat, df_id = self.accelerator.gather_for_metrics((feat, df_id))
                     self.evaluator.update((feat, df_id))
         cmc, mAP, _, _, _, _ = self.evaluator.compute()
-        self.logger.info("Validation Results - Epoch: {}".format(self.epoch))
-        self.logger.info("mAP: {:.1%}".format(mAP))
+        logger.info("Validation Results - Epoch: {}".format(self.epoch))
+        logger.info("mAP: {:.1%}".format(mAP))
         for r in [1, 5, 10]:
-            self.logger.info("CMC curve, Rank-{:<3}:{:.1%}".format(r, cmc[r - 1]))
+            logger.info("CMC curve, Rank-{:<3}:{:.1%}".format(r, cmc[r - 1]))
         torch.cuda.empty_cache()
         end_time = time.time()
         time_per_batch = (end_time - start_time) / len(self.val_loader)
-        self.logger.info("===> Validation Epoch {} done. Total time: {:.3f}[s]"
+        logger.info("===> Validation Epoch {} done. Total time: {:.3f}[s]"
                          .format(self.epoch, end_time - start_time))
         return cmc, mAP

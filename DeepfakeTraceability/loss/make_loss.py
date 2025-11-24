@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from .softmax_loss import CrossEntropyLabelSmooth, LabelSmoothingCrossEntropy
 from .triplet_loss import TripletLoss
 from .center_loss import CenterLoss
-logger = logging.getLogger('Train')
+logger = logging.getLogger(__name__)
 def make_loss(config, num_classes=10):
     sampler = config['dataset']['sampler']
     feat_dim = config['model']['feat_dim']

@@ -10,7 +10,7 @@ from .base_dataset import BaseImageDataset
 from collections import defaultdict
 import pickle
 
-logger = logging.getLogger("Train")
+logger = logging.getLogger(__name__)
 
 @DATASETS_FACTORY.register_module("DFT30")
 class DFT30(BaseImageDataset):

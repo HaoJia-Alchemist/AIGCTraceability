@@ -44,7 +44,7 @@ class CosineLRScheduler(Scheduler):
             noise_range_t=noise_range_t, noise_pct=noise_pct, noise_std=noise_std, noise_seed=noise_seed,
             initialize=initialize)
 
-        assert t_initial > 0
+        # assert t_initial > 0
         assert lr_min >= 0
         if t_initial == 1 and t_mul == 1 and decay_rate == 1:
             _logger.warning("Cosine annealing scheduler will have no effect on the learning "

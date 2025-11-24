@@ -1,3 +1,4 @@
+import logging
 import os
 import os.path as osp
 from abc import ABC
@@ -5,6 +6,7 @@ from abc import ABC
 import torch
 from accelerate import Accelerator
 
+logger = logging.getLogger(__name__)
 
 class BaseProcessor(ABC):
     """
@@ -69,7 +71,7 @@ class BaseProcessor(ABC):
         if not osp.exists(osp.join(self.config["logging"]["log_dir"], "best_model")):
             os.makedirs(osp.join(self.config["logging"]["log_dir"], "best_model"))
         torch.save(unwrap_model.state_dict(), osp.join(self.config["logging"]["log_dir"], "best_model", "model.pth"))
-        self.logger.info(
+        logger.info(
             "Saved model to {}".format(osp.join(self.config["logging"]["log_dir"], "best_model", "model.pth")))
 
     def load_model(self, model_path):
@@ -80,7 +82,7 @@ class BaseProcessor(ABC):
     def save_state(self):
         self.accelerator.save_state(osp.join(self.config["logging"]["log_dir"], "checkpoint"),
                                     total_limit=2)
-        self.logger.info("Saved state to {}".format(osp.join(self.config["logging"]["log_dir"], "checkpoint")))
+        logger.info("Saved state to {}".format(osp.join(self.config["logging"]["log_dir"], "checkpoint")))
 
     def load_state(self, checkpoint_dir):
         self.accelerator.load_state(checkpoint_dir)

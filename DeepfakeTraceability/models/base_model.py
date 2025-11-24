@@ -4,13 +4,13 @@ from torch import nn
 from torch.nn import functional as F
 from loss import CenterLoss, TripletLoss, CrossEntropyLabelSmooth
 
+logger = logging.getLogger(__name__)
 
 class BaseModel(nn.Module):
     def __init__(self, config=None, num_classes=10):
         super(BaseModel, self).__init__()
         self.config = config
         self.num_classes = num_classes
-        self.logger = logging.getLogger("Train")
         self.epoch = 0
 
     def make_loss(self, config, num_classes=10):
@@ -20,17 +20,17 @@ class BaseModel(nn.Module):
         if 'triplet' in config['model']['metric_loss_type']:
             if config['model']['no_margin']:
                 triplet = TripletLoss()
-                self.logger.info("using soft triplet loss for training")
+                logger.info("using soft triplet loss for training")
             else:
                 triplet = TripletLoss(config['solver']['margin'])  # triplet loss
-                self.logger.info("using triplet loss with margin:{}".format(config['solver']['margin']))
+                logger.info("using triplet loss with margin:{}".format(config['solver']['margin']))
         else:
-            self.logger.error('expected METRIC_LOSS_TYPE should be triplet'
+            logger.error('expected METRIC_LOSS_TYPE should be triplet'
                          'but got {}'.format(config['model']['metric_loss_type']))
 
         if config['model']['if_label_smooth'] == 'on':
             xent = CrossEntropyLabelSmooth(num_classes=num_classes)
-            self.logger.info("label smooth on, num_classes: {}".format(num_classes))
+            logger.info("label smooth on, num_classes: {}".format(num_classes))
 
         if sampler == 'softmax':
             def loss_func(score, feat, target):
@@ -82,11 +82,11 @@ class BaseModel(nn.Module):
 
                         return loss
                 else:
-                    self.logger.error('expected METRIC_LOSS_TYPE should be triplet'
+                    logger.error('expected METRIC_LOSS_TYPE should be triplet'
                                  'but got {}'.format(config['model']['metric_loss_type']))
 
         else:
-            self.logger.error('expected sampler should be softmax, triplet, softmax_triplet or softmax_triplet_center'
+            logger.error('expected sampler should be softmax, triplet, softmax_triplet or softmax_triplet_center'
                          'but got {}'.format(config['dataset']['sampler']))
 
         return loss_func, center_criterion
@@ -104,7 +104,7 @@ class BaseModel(nn.Module):
             if config["solver"]['large_fc_lr']:
                 if "classifier" in key or "arcface" in key:
                     lr = config["solver"]['base_lr'] * 2
-                    print('Using two times learning rate for fc ')
+                    logger.info('Using two times learning rate for fc ')
 
             params += [{"params": [value], "lr": lr, "weight_decay": weight_decay}]
 

@@ -13,7 +13,7 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 import logging
 
 # 创建日志记录器
-logger = logging.getLogger('Train')
+logger = logging.getLogger(__name__)
 
 def read_image(img_path):
     """Keep reading image until succeed.
