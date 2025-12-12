@@ -1,8 +1,8 @@
-task_name: "clip_vit_l14"
-model_weights: /home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability/logs/clip_vit_l14_prompt_learn_20251209141957/best_model/model.pth
+task_name: "clip_vit_l14_prompt_learn_caption"
+model_weights: /home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability/logs/clip_vit_l14_prompt_learn_caption_20251128141410/best_model/model.pth
 #mdoel_weights: null
 model:
-  name: "CLIP_ViT_L14_Model_Prompt"
+  name: "CLIP_ViT_L14_Model_Prompt_Caption"
   backbone: "ViT-L/14"
   pretrained: null
   feat_dim: 1024
@@ -13,10 +13,13 @@ model:
   id_loss_weight: 1.0
   triplet_loss_weight: 1.0
   i2t_loss_weight: 1.0
+  caption_loss: 1.0
+  content_loss: 0.5
+  orth_loss: 0.1
 
 
 train:
-  processor: "prompt_learn"
+  processor: "prompt_learn_caption"
   log_period: 50
   checkpoint_period: 1
   eval_period: 1
@@ -60,7 +63,7 @@ solver:
 dataset:
   name: "DFT30"
   resolution: 224
-  train_batch_size: 48
+  train_batch_size: 36
   test_batch_size: 64
   num_instances: 12
   num_classes: 15

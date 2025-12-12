@@ -1,11 +1,14 @@
 import logging
+import math
 
 from accelerate import accelerator
 
+from .clip.simple_tokenizer import SimpleTokenizer as _Tokenizer
+_tokenizer = _Tokenizer()
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import torch
 import torch.nn as nn
-
+import torch.nn.functional as F
 from loss import CenterLoss, TripletLoss, CrossEntropyLabelSmooth
 from . import MODEL_FACTORY
 
@@ -44,6 +47,7 @@ class TextEncoder(nn.Module):
         self.positional_embedding = clip_model.positional_embedding
         self.ln_final = clip_model.ln_final
         self.text_projection = clip_model.text_projection
+        self.token_embedding = clip_model.token_embedding
         # self.dtype = clip_model.dtype
 
     def forward(self, prompts, tokenized_prompts):
@@ -58,10 +62,27 @@ class TextEncoder(nn.Module):
         x = x[torch.arange(x.shape[0]), tokenized_prompts.argmax(dim=-1)] @ self.text_projection
         return x
 
-@MODEL_FACTORY.register_module(module_name='CLIP_ViT_L14_Model_Prompt')
-class CLIP_ViT_L14_Model_Prompt(BaseModel):
+    def encode_caption(self, text):
+        # 新增：处理真实的 Caption 文本
+        # text: [batch_size, 77] (tokenized indices)
+        x = self.token_embedding(text)  # [batch_size, n_ctx, d_model]
+
+        # 添加位置编码 (需截断以匹配长度，标准CLIP通常是77)
+        x = x + self.positional_embedding
+        x = x.permute(1, 0, 2)  # NLD -> LND
+        x = self.transformer(x)
+        x = x.permute(1, 0, 2)  # LND -> NLD
+        x = self.ln_final(x)
+
+        # 取 EOT (End of Text) 特征
+        # text.argmax(dim=-1) 找到 EOT token 的位置
+        x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
+        return x
+
+@MODEL_FACTORY.register_module(module_name='CLIP_ViT_L14_Model_Prompt_Caption')
+class CLIP_ViT_L14_Model_Prompt_Caption(BaseModel):
     def __init__(self, config=None, num_classes=10):
-        super(CLIP_ViT_L14_Model_Prompt, self).__init__(config, num_classes)
+        super(CLIP_ViT_L14_Model_Prompt_Caption, self).__init__(config, num_classes)
         self.config = config
         self.epoch = 0
         self.num_classes = num_classes
@@ -96,17 +117,15 @@ class CLIP_ViT_L14_Model_Prompt(BaseModel):
         self.w_resolution = int((config['dataset']['resolution'] - config['model']['stride_size']) // config['model']['stride_size'] + 1)
         self.vision_stride_size = config['model']['stride_size']
         clip_model = load_clip_to_cpu(self.backbone_name, self.h_resolution, self.w_resolution, self.vision_stride_size)
-
         self.image_encoder = clip_model.visual
-
         dataset_name = config['dataset']['name']
         self.prompt_learner = PromptLearner(num_classes, clip_model=clip_model)
         self.text_encoder = TextEncoder(clip_model)
 
-    def forward(self, x=None, label=None, get_image=False, get_text=False):
+    def forward(self, x=None, label=None, captions=None, get_image=False, get_text=False):
+
         if get_text == True:
             prompts = self.prompt_learner(label)
-            # 修正：使用 label 索引，选出当前 batch 对应的 tokenized_prompts
             text_features = self.text_encoder(prompts, self.prompt_learner.tokenized_prompts[label])
             return text_features
 
@@ -137,15 +156,59 @@ class CLIP_ViT_L14_Model_Prompt(BaseModel):
         if self.training:
             cls_score = self.classifier(feat)
             cls_score_proj = self.classifier_proj(feat_proj)
-            return [cls_score, cls_score_proj], [img_feature_last, img_feature, img_feature_proj], img_feature_proj
+
+            caption_loss = 0.0
+            if captions is not None:
+            #     # Tokenize caption (需在 GPU 上)
+                device = x.device
+                tokenized_captions = clip.tokenize(captions, truncate=True).to(device)
+            #
+            #     # 获取 Caption 特征
+                caption_features = self.text_encoder.encode_caption(tokenized_captions)
+            #
+            #     # 归一化特征 (CLIP计算相似度需要归一化)
+                image_features_norm = img_feature_proj # / img_feature_proj.norm(dim=-1, keepdim=True)
+                caption_features_norm = caption_features # / caption_features.norm(dim=-1, keepdim=True)
+            #
+                caption_loss = F.cosine_similarity(image_features_norm, caption_features_norm).mean()
+            #     # caption_loss = 0.0
+            #     pass
+                # 计算 Logits (Temperature 可设为 clip_model.logit_scale 或手动设定如 0.07)
+                # logit_scale = self.image_encoder.logit_scale.exp() if hasattr(self.image_encoder,
+                #                                                               'logit_scale') else torch.exp(
+                #     torch.tensor(4.6052))  # default clip scale
+                # logits_per_image = logit_scale * image_features_norm @ caption_features_norm.t()
+                # logits_per_text = logits_per_image.t()
+                #
+                # # 生成 Ground Truth (对角线为正样本)
+                # batch_size = x.shape[0]
+                # labels = torch.arange(batch_size, device=device)
+                #
+                # # 计算标准的 CLIP 对比损失 (ITC Loss)
+                # loss_i2t = nn.functional.cross_entropy(logits_per_image, labels)
+                # loss_t2i = nn.functional.cross_entropy(logits_per_text, labels)
+                # caption_loss = (loss_i2t + loss_t2i) / 2
+
+            return [cls_score, cls_score_proj], [img_feature_last, img_feature, img_feature_proj], img_feature_proj , caption_loss
 
         else:
             if self.neck_feat == 'after':
                 # print("Test with feature after BN")
-                # return feat_proj
                 return torch.cat([feat, feat_proj], dim=1)
             else:
                 return torch.cat([img_feature, img_feature_proj], dim=1)
+
+    def load_param(self, trained_path):
+        param_dict = torch.load(trained_path)
+        for i in param_dict:
+            self.state_dict()[i.replace('module.', '')].copy_(param_dict[i])
+        logger.info('Loading pretrained model from {}'.format(trained_path))
+
+    def load_param_finetune(self, model_path):
+        param_dict = torch.load(model_path)
+        for i in param_dict:
+            self.state_dict()[i].copy_(param_dict[i])
+        logger.info('Loading pretrained model for finetuning from {}'.format(model_path))
 
 
     def make_optimizer_stage1(self, config, model):
@@ -209,13 +272,17 @@ from .clip import clip
 def load_clip_to_cpu(backbone_name, h_resolution, w_resolution, vision_stride_size):
     url = clip._MODELS[backbone_name]
     model_path = clip._download(url, "/home/jh/disk/pretrained/clip/")
+
     try:
         # loading JIT archive
         model = torch.jit.load(model_path, map_location="cpu").eval()
         state_dict = None
+
     except RuntimeError:
         state_dict = torch.load(model_path, map_location="cpu")
+
     model = clip.build_model(state_dict or model.state_dict())
+
     return model
 
 

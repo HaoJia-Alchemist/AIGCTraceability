@@ -234,8 +234,9 @@ class VisionTransformer(nn.Module):
 
         x = x.permute(1, 0, 2)  # NLD -> LND
 
-        x11 = self.transformer.resblocks[:11](x)
-        x12 = self.transformer.resblocks[11](x11)
+        x11 = self.transformer.resblocks[:23](x)
+        x12 = self.transformer.resblocks[23](x11)
+
         x11 = x11.permute(1, 0, 2)  # LND -> NLD
         x12 = x12.permute(1, 0, 2)  # LND -> NLD
 
@@ -244,7 +245,7 @@ class VisionTransformer(nn.Module):
         if self.proj is not None:
             xproj = x12 @ self.proj
 
-        return x11, x12, xproj
+        return x11, x12, xproj # image_features_last, image_features, image_features_proj
 
 
 class CLIP(nn.Module):

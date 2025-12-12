@@ -45,12 +45,15 @@ def main():
     parser.add_argument('--config_file', type=str,
                         default='./config/configs_dir/efficientnet.yaml',
                         help='path to detector YAML file')
+    parser.add_argument('--train_config_file', type=str,
+                        default='./config/train_config.yaml',
+                        help='path to train YAML file')
     parser.add_argument("--opts", nargs='+', help="Modify config options using the command-line", default=[])
     args = parser.parse_args()
 
     # parse options and load config
     config = OmegaConf.load(args.config_file)
-    config_train = OmegaConf.load('config/train_config.yaml')
+    config_train = OmegaConf.load(args.train_config_file)
     config = OmegaConf.merge(config_train, config)
     config_args = OmegaConf.from_dotlist(args.opts)
     config = OmegaConf.merge(config, config_args)
@@ -85,7 +88,7 @@ def main():
     model = make_model(config, num_classes=num_classes)
     model = model.float()
     # prepare the loss
-    loss_func, center_criterion = model.make_loss(config, num_classes=num_classes)
+    loss_func = model.make_loss(config, num_classes=num_classes)
 
     # prepare the optimizer
     optimizer_stage1 = model.make_optimizer_stage1(config, model)
@@ -107,29 +110,25 @@ def main():
         noise_seed=42,
     )
 
-
-
-
-    optimizer_stage2, optimizer_center_stage2 = model.make_optimizer_stage2(config, model, center_criterion)
+    optimizer_stage2 = model.make_optimizer_stage2(config, model)
     scheduler_stage2 = WarmupMultiStepLR(optimizer_stage2, config['solver']['stage2']['steps'],
                                          config['solver']['stage2']['gamma'],
                                          config['solver']['stage2']['warmup_factor'],
                                          config['solver']['stage2']['warmup_iters'],
                                          config['solver']['stage2']['warmup_method'])
 
-    model, center_criterion, optimizer_stage1, optimizer_stage2, optimizer_center_stage2 = accelerator.prepare(model,
-                                                                                                               center_criterion,
-                                                                                                               optimizer_stage1,
-                                                                                                               optimizer_stage2,
-                                                                                                               optimizer_center_stage2)
+    model, optimizer_stage1, optimizer_stage2 = accelerator.prepare(model,
+                                                                                             optimizer_stage1,
+                                                                                             optimizer_stage2,
+                                                                                             )
 
     accelerator.register_for_checkpointing(scheduler_stage1)
     accelerator.register_for_checkpointing(scheduler_stage2)
 
     # prepare the processor
     processor_class = PROCESSOR_FACTORY[config['train']['processor']]
-    processor = processor_class(config, model, center_criterion, train_loader_stage1, train_loader_stage2, val_loader,
-                                optimizer_stage1, optimizer_stage2, optimizer_center_stage2,
+    processor = processor_class(config, model, train_loader_stage1, train_loader_stage2, val_loader,
+                                optimizer_stage1, optimizer_stage2,
                                 scheduler_stage1, scheduler_stage2, loss_func, num_query, accelerator)
 
     if config["resume"]:
@@ -137,9 +136,8 @@ def main():
         processor.epoch = config["resume_epoch"]
         logger.info("Resume from checkpoint: {}".format(config["resume"]))
 
-    processor.do_train_stage1()
+    # processor.do_train_stage1()
     best_metrics = processor.do_train_stage2()
-
 
     logger.info("Stop Training on best Testing metric \n{}".format(parse_metric_for_print(best_metrics)))
 

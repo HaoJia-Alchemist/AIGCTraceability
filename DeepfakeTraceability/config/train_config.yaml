@@ -1,6 +1,6 @@
 # 使用的GPU ID列表 (如果为空则使用CPU)
-gpu_ids: '0,1'  # 示例: 0, 1, 2, 3 表示使用4个GPU
-#resume: /home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability/logs/efficientnet-b4_20251014211353/checkpoint
+gpu_ids: '0,1,2,3'  # 示例: 0, 1, 2, 3 表示使用4个GPU
+#resume:
 #resume_epoch: 15
 resume: null
 mixed_precision: "fp16"
@@ -14,12 +14,12 @@ logging:
   checkpoints_total_limit: 1
 
 dataset:
-  root_dir: /home/jh/disk/datasets/AIGCTraceability/
+  root_dir: /jsj_zyb/jh/datasets/AIGCTraceability
   dataset_name: DFT30
   num_workers: 4
   verbose: true
-#  dataset_json_file: /home/jh/disk/workspace/AIGCTraceability/dataset_generate/prompt_unseen_evaluation.json
-  dataset_json_file: /home/jh/disk/workspace/AIGCTraceability/dataset_generate/unseen_evaluation.json
+#  dataset_json_file: /jsj_zyb/jh/workspace/AIGCTraceability/dataset_generate/prompt_unseen_evaluation.json
+  dataset_json_file: /jsj_zyb/jh/workspace/AIGCTraceability/dataset_generate/unseen_evaluation.json
 
   mean: [ 0.485, 0.456, 0.406 ]
   std: [ 0.229, 0.224, 0.225 ]

@@ -20,6 +20,7 @@ class DFT30(BaseImageDataset):
         self.root_dir = config.get('root_dir')
         self.dataset_name = config.get('dataset_name')
         self.dataset_json_file = config.get('dataset_json_file')
+        print(self.dataset_json_file)
         with open(self.dataset_json_file , 'r') as f:
             dataset_json = json.load(f)
         self.train_dataset_info = dataset_json['train']

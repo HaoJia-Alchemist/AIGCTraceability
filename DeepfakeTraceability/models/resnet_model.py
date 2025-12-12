@@ -54,7 +54,8 @@ class ResNetModel(BaseModel):
 
 
 
-    def forward(self, x):
+    def forward(self, data_dict):
+        x = data_dict['imgs']
         # 提取特征
         x = self.resnet.conv1(x)
         x = self.resnet.bn1(x)
@@ -75,7 +76,10 @@ class ResNetModel(BaseModel):
         
         if self.training:
             cls_score = self.classifier(feat)
-            return cls_score, img_feature
+            return {
+                "cls_score": cls_score,
+                "img_feature": img_feature,
+            }
         else:
             if self.config["test"]["neck_feat"] == 'after':
                 return feat

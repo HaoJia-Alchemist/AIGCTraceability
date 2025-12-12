@@ -77,8 +77,6 @@ class EffortDetector(BaseModel):
 
     def make_loss(self, config, num_classes=10):
         sampler = config['dataset']['sampler']
-        feat_dim = config['model']['feat_dim']
-        center_criterion = CenterLoss(num_classes=num_classes, feat_dim=feat_dim)
         if 'triplet' in config['model']['metric_loss_type']:
             if config['model']['no_margin']:
                 triplet = TripletLoss()
@@ -120,7 +118,7 @@ class EffortDetector(BaseModel):
                     # loss += lambda_reg * reg_term / num_reg
 
                     return loss
-        return loss_func, center_criterion
+        return loss_func
 
     # def get_losses(self, data_dict: dict, pred_dict: dict) -> dict:
     #    label = data_dict['label']

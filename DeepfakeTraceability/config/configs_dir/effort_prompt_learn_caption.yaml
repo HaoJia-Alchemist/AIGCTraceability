@@ -1,8 +1,8 @@
-task_name: "clip_vit_l14"
-model_weights: /home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability/logs/clip_vit_l14_prompt_learn_20251209141957/best_model/model.pth
-#mdoel_weights: null
+task_name: "clip_vit_l14_effort_prompt_learn_caption"
+#model_weights: /home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability/logs/clip_vit_l14_prompt_learn_caption_20251128141410/best_model/model.pth
+mdoel_weights: null
 model:
-  name: "CLIP_ViT_L14_Model_Prompt"
+  name: "CLIP_ViT_L14_Effort_Model_Prompt_Caption"
   backbone: "ViT-L/14"
   pretrained: null
   feat_dim: 1024
@@ -13,10 +13,11 @@ model:
   id_loss_weight: 1.0
   triplet_loss_weight: 1.0
   i2t_loss_weight: 1.0
+  caption_loss: 1.0
 
 
 train:
-  processor: "prompt_learn"
+  processor: "prompt_learn_caption"
   log_period: 50
   checkpoint_period: 1
   eval_period: 1
@@ -27,7 +28,7 @@ test:
   feat_norm: "yes"
   processor: "base"
   neck_feat: "after"
-  re_ranking: true
+  re_ranking: false
 
 
 solver:

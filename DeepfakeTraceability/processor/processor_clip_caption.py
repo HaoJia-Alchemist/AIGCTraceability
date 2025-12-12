@@ -13,12 +13,12 @@ from . import PROCESSOR_FACTORY
 
 logger = logging.getLogger(__name__)
 
-@PROCESSOR_FACTORY.register_module("prompt_learn")
-class PromptLearnProcessor(BaseProcessor):
+@PROCESSOR_FACTORY.register_module("prompt_learn_caption")
+class PromptLearnCaptionProcessor(BaseProcessor):
     def __init__(self, config, model, train_loader_stage1, train_loader_stage2, val_loader,
                  optimizer_stage1, optimizer_stage2,
                  scheduler_stage1, scheduler_stage2, loss_func, num_query, accelerator):
-        super(PromptLearnProcessor, self).__init__(config, model, loss_fn=loss_func,
+        super(PromptLearnCaptionProcessor, self).__init__(config, model, loss_fn=loss_func,
                                                    accelerator=accelerator, num_query=num_query)
         self.log_period = self.config["train"]["log_period"]
         self.checkpoint_period = self.config["train"]["checkpoint_period"]
@@ -37,6 +37,7 @@ class PromptLearnProcessor(BaseProcessor):
 
         self.loss_meter = AverageMeter()
         self.acc_meter = AverageMeter()
+        self.caption_loss_meter = AverageMeter()
         self.epoch = self.model.epoch if self.accelerator.num_processes == 1 else self.model.module.epoch
         self.evaluator = R1_mAP_eval(num_query, max_rank=50, feat_norm=config["test"]["feat_norm"],
                                      reranking=self.config["test"]["re_ranking"])
@@ -48,17 +49,25 @@ class PromptLearnProcessor(BaseProcessor):
         logger.info("Start train stage 1 ...")
         image_features = []
         labels = []
+        prompts_list = []
         xent = SupConLoss(self.accelerator.device)
         logger.info("Starting to extract image feature ...")
         with torch.no_grad():
-            for n_iter, data_dict in enumerate(tqdm(self.train_loader_stage1)):
+            for n_iter, (img, df_id, df_name, img_prompt, img_path) in enumerate(tqdm(self.train_loader_stage1)):
                 with self.accelerator.autocast():
-                    image_feature = self.model(data_dict, get_image=True)
-                    for i, img_feat in zip(data_dict['df_ids'], image_feature):
+                    image_feature = self.model(img, get_image=True)
+
+                    # img_prompt 通常是 tuple (batch_size,), 转为 list
+                    batch_prompts = list(img_prompt)
+
+                    for i, img_feat, prompt in zip(df_id, image_feature, batch_prompts):
                         labels.append(i)
                         image_features.append(img_feat.cpu())
+                        prompts_list.append(prompt)  # 收集 prompt
+
             labels_list = torch.stack(labels, dim=0)
             image_features_list = torch.stack(image_features, dim=0)
+            # prompt 不需要 stack，保持 list 即可
 
             batch = self.config['dataset']['train_batch_size']
             num_image = labels_list.shape[0]
@@ -77,16 +86,25 @@ class PromptLearnProcessor(BaseProcessor):
             for i, b_list in enumerate(tqdm(batches)):
                 # train step
                 self.optimizer_stage1.zero_grad()
-                target = labels_list[b_list].to(self.accelerator.device)
-                image_features = image_features_list[b_list].to(self.accelerator.device)
+
+                indices = b_list.to(self.accelerator.device)
+                indices_cpu = b_list.tolist()
+
+                target = labels_list[indices].to(self.accelerator.device)
+                batch_image_features = image_features_list[indices_cpu].to(self.accelerator.device)
+                batch_prompts = [prompts_list[idx] for idx in indices_cpu]
+
                 with self.accelerator.autocast():
+                    # 关键修改：传入 batch_prompts
                     text_features = self.model(label=target, get_text=True)
-                loss_i2t = xent(image_features, text_features, target, target)
-                loss_t2i = xent(text_features, image_features, target, target)
+
+                loss_i2t = xent(batch_image_features, text_features, target, target)
+                loss_t2i = xent(text_features, batch_image_features, target, target)
                 loss = loss_i2t + loss_t2i
+
                 self.accelerator.backward(loss)
                 self.optimizer_stage1.step()
-                self.loss_meter.update(loss.item(), target.shape[0])
+                self.loss_meter.update(loss.item(), len(b_list))
 
                 if (i + 1) % self.log_period == 0:
                     logger.info("Epoch[{}] Iteration[{}/{}] Loss: {:.3f}, Base Lr: {:.2e}"
@@ -118,7 +136,17 @@ class PromptLearnProcessor(BaseProcessor):
                     text_feature = self.model(label=l_list, get_text=True)
                 text_features.append(text_feature.cpu())
             text_features = torch.cat(text_features, 0).to(self.accelerator.device)
+
+        logger.info("do valid!")
+        cmc, mAP = self.do_validate()
+        best_metrics = {"mAP": mAP, "Rank@1": cmc[0], "Rank@5": cmc[4], "Rank@10": cmc[9], "Epoch": 0}
+        logger.info(
+            "===> Best mAP: {:.3f}, Rank@1: {:.3f}, Rank@5: {:.3f}, Rank@10: {:.3f}, Epoch: {}".format(
+                best_metrics["mAP"], best_metrics["Rank@1"], best_metrics["Rank@5"],
+                best_metrics["Rank@10"], best_metrics["Epoch"]))
+
         logger.info("Starting to train image encoder")
+        self.model.train()
         all_start_time = time.monotonic()
         for epoch in range(1, self.max_epoch_stage2 + 1):
             start_time = time.time()
@@ -126,20 +154,22 @@ class PromptLearnProcessor(BaseProcessor):
             self.acc_meter.reset()
             self.evaluator.reset()
             self.model.train()
-            for n_iter, data_dict in enumerate(tqdm(self.train_loader_stage2)):
+            for n_iter, (img, df_id, df_name, img_prompt, img_path) in enumerate(tqdm(self.train_loader_stage2)):
                 self.optimizer_stage2.zero_grad()
-                with self.accelerator.autocast():
-                    output_dict = self.model(data_dict)
+                batch_prompts = list(img_prompt)
+                with (self.accelerator.autocast()):
+                    output_dict = self.model(x=img, label=df_id, captions=batch_prompts)
+
                     logits = output_dict['image_features'] @ text_features.t()
-                    loss = self.loss_fn(output_dict, data_dict, logits)
+                    loss = self.loss_fn(output_dict, df_id, logits)
 
                 self.accelerator.backward(loss)
                 self.optimizer_stage2.step()
                 self.scheduler_stage2.step()
 
-                acc = (logits.max(1)[1] == data_dict['df_ids']).float().mean()
+                acc = (logits.max(1)[1] == df_id).float().mean()
 
-                self.loss_meter.update(loss.item(), data_dict['imgs'].shape[0])
+                self.loss_meter.update(loss.item(), img.shape[0])
                 self.acc_meter.update(acc, 1)
 
                 if (n_iter + 1) % self.log_period == 0:
@@ -173,33 +203,14 @@ class PromptLearnProcessor(BaseProcessor):
         logger.info("Total running time: {}".format(total_time))
         return best_metrics
 
-    def train_epoch(self, epoch):
-        logger.info("===> Epoch[{}] start!".format(epoch))
-        start_time = time.time()
-        self.loss_meter.reset()
-        self.acc_meter.reset()
-        self.model.train()
-        for n_iter, data in enumerate(tqdm(self.train_loader, total=len(self.train_loader))):
-            self.train_step(data)
-            if (n_iter + 1) % self.log_period == 0:
-                logger.info("Epoch[{}] Iteration[{}/{}] Loss: {:.3f}, Acc: {:.3f}, Base Lr: {:.2e}"
-                                 .format(epoch, (n_iter + 1), len(self.train_loader),
-                                         self.loss_meter.avg, self.acc_meter.avg, self.scheduler.get_lr()[0]))
-        end_time = time.time()
-        time_per_batch = (end_time - start_time) / len(self.train_loader)
-        logger.info("Epoch {} done. Time per batch: {:.3f}[s] Speed: {:.1f}[samples/s]"
-                         .format(epoch, time_per_batch, self.config["dataset"]["train_batch_size"] / time_per_batch))
-
-
     def do_validate(self):
         logger.info("===> Validation Epoch {} start.".format(self.epoch))
         start_time = time.time()
         self.evaluator.reset()
         self.model.eval()
-        for n_iter, data_dict in enumerate(tqdm(self.val_loader)):
-            df_id = data_dict['df_ids']
+        for n_iter, (img, df_id, df_name, img_prompt, img_path) in enumerate(tqdm(self.val_loader)):
             with torch.no_grad():
-                feat = self.model(data_dict)
+                feat = self.model(img)
                 feat, df_id = self.accelerator.gather_for_metrics((feat, df_id))
                 self.evaluator.update((feat, df_id))
         cmc, mAP, _, _, _, _ = self.evaluator.compute()

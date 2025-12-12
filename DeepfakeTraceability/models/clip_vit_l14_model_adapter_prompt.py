@@ -2,6 +2,8 @@ import logging
 
 from accelerate import accelerator
 
+from .clip.simple_tokenizer import SimpleTokenizer as _Tokenizer
+_tokenizer = _Tokenizer()
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import torch
 import torch.nn as nn
@@ -15,16 +17,20 @@ from .base_model import BaseModel
 
 logger = logging.getLogger(__name__)
 
+
 def weights_init_kaiming(m):
     classname = m.__class__.__name__
     if classname.find('Linear') != -1:
         nn.init.kaiming_normal_(m.weight, a=0, mode='fan_out')
-        nn.init.constant_(m.bias, 0.0)
+        # === 修改处：先检查 bias 是否存在 ===
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0.0)
 
     elif classname.find('Conv') != -1:
         nn.init.kaiming_normal_(m.weight, a=0, mode='fan_in')
         if m.bias is not None:
             nn.init.constant_(m.bias, 0.0)
+
     elif classname.find('BatchNorm') != -1:
         if m.affine:
             nn.init.constant_(m.weight, 1.0)
@@ -34,7 +40,8 @@ def weights_init_classifier(m):
     classname = m.__class__.__name__
     if classname.find('Linear') != -1:
         nn.init.normal_(m.weight, std=0.001)
-        if m.bias:
+        # === 修改处：先检查 bias ===
+        if m.bias is not None:
             nn.init.constant_(m.bias, 0.0)
 
 class TextEncoder(nn.Module):
@@ -58,10 +65,10 @@ class TextEncoder(nn.Module):
         x = x[torch.arange(x.shape[0]), tokenized_prompts.argmax(dim=-1)] @ self.text_projection
         return x
 
-@MODEL_FACTORY.register_module(module_name='CLIP_ViT_L14_Model_Prompt')
-class CLIP_ViT_L14_Model_Prompt(BaseModel):
+@MODEL_FACTORY.register_module(module_name='CLIP_ViT_L14_Model_Adapter_Prompt')
+class CLIP_ViT_L14_Model_Adapter_Prompt(BaseModel):
     def __init__(self, config=None, num_classes=10):
-        super(CLIP_ViT_L14_Model_Prompt, self).__init__(config, num_classes)
+        super(CLIP_ViT_L14_Model_Adapter_Prompt, self).__init__(config, num_classes)
         self.config = config
         self.epoch = 0
         self.num_classes = num_classes
@@ -99,6 +106,12 @@ class CLIP_ViT_L14_Model_Prompt(BaseModel):
 
         self.image_encoder = clip_model.visual
 
+        # === 【修改点 1：初始化 Adapter】 ===
+        # Adapter 通常加在 visual projection 之后的特征上 (in_planes_proj)
+        self.adapter = Adapter(self.in_planes_proj, reduction=4, ratio=0.2)
+        # 初始化 Adapter 权重 (也可以用 weights_init_kaiming，看实验效果)
+        self.adapter.apply(weights_init_kaiming)
+
         dataset_name = config['dataset']['name']
         self.prompt_learner = PromptLearner(num_classes, clip_model=clip_model)
         self.text_encoder = TextEncoder(clip_model)
@@ -112,24 +125,14 @@ class CLIP_ViT_L14_Model_Prompt(BaseModel):
 
         if get_image == True:
             image_features_last, image_features, image_features_proj = self.image_encoder(x)
-            if self.backbone_name == 'RN50':
-                return image_features_proj[0]
-            elif self.backbone_name == 'ViT-L/14':
-                return image_features_proj[:, 0]
+            return image_features_proj[:, 0]
 
-        if self.backbone_name == 'RN50':
-            image_features_last, image_features, image_features_proj = self.image_encoder(x)
-            img_feature_last = nn.functional.avg_pool2d(image_features_last, image_features_last.shape[2:4]).view(
-                x.shape[0], -1)
-            img_feature = nn.functional.avg_pool2d(image_features, image_features.shape[2:4]).view(x.shape[0], -1)
-            img_feature_proj = image_features_proj[0]
-
-        elif self.backbone_name == 'ViT-L/14':
-            cv_embed = None
-            image_features_last, image_features, image_features_proj = self.image_encoder(x, cv_embed)
-            img_feature_last = image_features_last[:, 0]
-            img_feature = image_features[:, 0]
-            img_feature_proj = image_features_proj[:, 0]
+        cv_embed = None
+        image_features_last, image_features, image_features_proj = self.image_encoder(x, cv_embed)
+        img_feature_last = image_features_last[:, 0]
+        img_feature = image_features[:, 0]
+        img_feature_proj_raw = image_features_proj[:, 0]
+        img_feature_proj = self.adapter(img_feature_proj_raw)
 
         feat = self.bottleneck(img_feature)
         feat_proj = self.bottleneck_proj(img_feature_proj)
@@ -137,13 +140,14 @@ class CLIP_ViT_L14_Model_Prompt(BaseModel):
         if self.training:
             cls_score = self.classifier(feat)
             cls_score_proj = self.classifier_proj(feat_proj)
-            return [cls_score, cls_score_proj], [img_feature_last, img_feature, img_feature_proj], img_feature_proj
+            # return [cls_score, cls_score_proj], [img_feature_last, img_feature, img_feature_proj], img_feature_proj
+            return cls_score_proj, img_feature_proj, img_feature_proj
 
         else:
             if self.neck_feat == 'after':
                 # print("Test with feature after BN")
-                # return feat_proj
-                return torch.cat([feat, feat_proj], dim=1)
+                return feat_proj
+                # return torch.cat([feat, feat_proj], dim=1)
             else:
                 return torch.cat([img_feature, img_feature_proj], dim=1)
 
@@ -177,7 +181,19 @@ class CLIP_ViT_L14_Model_Prompt(BaseModel):
             if "prompt_learner" in key:
                 # value.requires_grad_(False)
                 continue
-            if not value.requires_grad:
+            if "image_encoder" in key:
+                # 重点：冻结 CLIP 原始图像编码器
+                value.requires_grad_(False)
+                continue
+
+            should_train = False
+            if "adapter" in key:
+                should_train = True
+            elif "classifier" in key:
+                should_train = True
+            elif "bottleneck" in key:
+                should_train = True
+            if not should_train:
                 continue
             lr = config['solver']['stage2']['base_lr']
             weight_decay = config['solver']['stage2']['weight_decay']
@@ -188,10 +204,9 @@ class CLIP_ViT_L14_Model_Prompt(BaseModel):
                 if "classifier" in key or "arcface" in key:
                     lr = config['solver']['stage2']['base_lr'] * 2
                     logger.info('Using two times learning rate for fc ')
-
-
             params += [{"params": [value], "lr": lr, "weight_decay": weight_decay}]
             keys += [key]
+        logger.info(f"Stage 2 Optimized Keys: {keys}")
         if config['solver']['stage2']['type'] == 'SGD':
             optimizer = getattr(torch.optim, config['solver']['stage2']['type'])(params,
                                                                                momentum=config['solver']['stage2']['momentum'])
@@ -300,3 +315,19 @@ class PromptLearner(nn.Module):
             )
 
             return prompts
+
+class Adapter(nn.Module):
+    def __init__(self, c_in, reduction=4, ratio=0.2):
+        super(Adapter, self).__init__()
+        self.fc = nn.Sequential(
+            nn.Linear(c_in, c_in // reduction, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(c_in // reduction, c_in, bias=False),
+            nn.ReLU(inplace=True)
+        )
+        self.ratio = ratio
+
+    def forward(self, x):
+        # 残差连接：原特征 + alpha * 变换后的特征
+        x_residual = self.fc(x)
+        return x + self.ratio * x_residual

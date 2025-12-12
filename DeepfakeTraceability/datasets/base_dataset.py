@@ -124,4 +124,5 @@ class ImageDataset(Dataset):
             img = Image.fromarray(img)
         if self.transform is not None:
             img = self.transform(img)
+
         return img, df_id, df_name, img_prompt, img_path.split('/')[-1]

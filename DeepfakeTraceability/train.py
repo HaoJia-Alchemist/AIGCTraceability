@@ -46,12 +46,15 @@ def main():
     parser.add_argument('--config_file', type=str,
                         default='./config/configs_dir/efficientnet.yaml',
                         help='path to detector YAML file')
+    parser.add_argument('--train_config_file', type=str,
+                        default='./config/train_config.yaml',
+                        help='path to train YAML file')
     parser.add_argument("--opts", nargs='+', help="Modify config options using the command-line", default=[])
     args = parser.parse_args()
 
     # parse options and load config
     config = OmegaConf.load(args.config_file)
-    config_train = OmegaConf.load('config/train_config.yaml')
+    config_train = OmegaConf.load(args.train_config_file)
     config = OmegaConf.merge(config_train, config)
     config_args = OmegaConf.from_dotlist(args.opts)
     config = OmegaConf.merge(config, config_args)
@@ -84,25 +87,25 @@ def main():
 
     # prepare the model
     model = make_model(config, num_classes=num_classes)
+    model = model.float()
     model.to(device)
     # prepare the loss
-    loss_func, center_criterion = model.make_loss(config, num_classes=num_classes)
+    loss_func= model.make_loss(config, num_classes=num_classes)
 
     # prepare the optimizer
-    optimizer, optimizer_center = model.make_optimizer(config, model, center_criterion)
+    optimizer = model.make_optimizer(config, model)
 
     # prepare the scheduler
     scheduler = WarmupMultiStepLR(optimizer, config['solver']['steps'], config['solver']['gamma'],
                                   config['solver']['warmup_factor'],
                                   config['solver']['warmup_iters'], config['solver']['warmup_method'])
 
-    model, center_criterion, optimizer, optimizer_center = accelerator.prepare(model, center_criterion, optimizer,
-                                                                               optimizer_center)
+    model, optimizer = accelerator.prepare(model, optimizer)
     accelerator.register_for_checkpointing(scheduler)
 
     # prepare the processor
     processor_class = PROCESSOR_FACTORY[config['train']['processor']]
-    processor = processor_class(config, model, center_criterion, train_loader, val_loader, optimizer, optimizer_center,
+    processor = processor_class(config, model, train_loader, val_loader, optimizer,
                                 scheduler, loss_func, num_query, accelerator)
 
     if config["resume"]:

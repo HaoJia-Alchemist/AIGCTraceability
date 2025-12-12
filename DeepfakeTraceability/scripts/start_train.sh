@@ -1,3 +1,4 @@
+#cd  /jsj_zyb/jh/workspace/AIGCTraceability/DeepfakeTraceability
 cd  /home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability
 # 检查yq命令是否存在
 if ! command -v yq &> /dev/null
@@ -7,7 +8,7 @@ then
 fi
 
 # 从配置文件中读取gpu_ids
-GPU_IDS=$(python -c "import yaml; print(yaml.safe_load(open('./config/train_config.yaml'))['gpu_ids'])")
+GPU_IDS=$(python -c "import yaml; print(yaml.safe_load(open('./config/train_config_SDAI.yaml'))['gpu_ids'])")
 # 检查gpu_ids是否为空或null
 if [ "$GPU_IDS" == "null" ] || [ "$GPU_IDS" == "" ]; then
     echo "未配置gpu_ids"
@@ -30,4 +31,8 @@ fi
 #CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" train.py --config "./config/configs_dir/resnet50.yaml"
 #CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" train.py --config "./config/configs_dir/clip_vit_l14.yaml"
 #CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" train.py --config "./config/configs_dir/clip_vit_l14.yaml" --opt task_name='clip_vit_l14_triplet_train' dataset.sampler='softmax_triplet'
-CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" train.py --config "./config/configs_dir/effort.yaml" --opt task_name='effort_train' dataset.sampler='softmax_triplet'
+
+
+#CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" train.py --config "./config/configs_dir/effort.yaml" --opt task_name='effort_train' dataset.sampler='softmax_triplet'
+
+CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" train.py --config "./config/configs_dir/prompt_learn.yaml" --opt task_name='clip_vit_l14' dataset.sampler='softmax_triplet'

@@ -3,6 +3,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from loss import CenterLoss, TripletLoss, CrossEntropyLabelSmooth
+import os.path as osp
 
 logger = logging.getLogger(__name__)
 
@@ -15,8 +16,6 @@ class BaseModel(nn.Module):
 
     def make_loss(self, config, num_classes=10):
         sampler = config['dataset']['sampler']
-        feat_dim = config['model']['feat_dim']
-        center_criterion = CenterLoss(num_classes=num_classes, feat_dim=feat_dim)  # center loss
         if 'triplet' in config['model']['metric_loss_type']:
             if config['model']['no_margin']:
                 triplet = TripletLoss()
@@ -33,24 +32,30 @@ class BaseModel(nn.Module):
             logger.info("label smooth on, num_classes: {}".format(num_classes))
 
         if sampler == 'softmax':
-            def loss_func(score, feat, target):
-                return F.cross_entropy(score, target)
+            def loss_func(output_dict, data_dict):
+                cls_score = output_dict['cls_score']
+                target = data_dict['df_ids']
+                return F.cross_entropy(cls_score, target)
 
         elif sampler == 'softmax_triplet':
-            def loss_func(score, feat, target, i2tscore=None):
+            # def loss_func(score, feat, target, i2tscore=None):
+            def loss_func(output_dict, data_dict, i2tscore=None):
+                cls_score = output_dict['cls_score']
+                target = data_dict['df_ids']
+                image_features = output_dict['image_features']
                 if config['model']['metric_loss_type'] == 'triplet':
                     if config['model']['if_label_smooth'] == 'on':
-                        if isinstance(score, list):
-                            ID_LOSS = [xent(scor, target) for scor in score[0:]]
+                        if isinstance(cls_score, list):
+                            ID_LOSS = [xent(scor, target) for scor in cls_score[0:]]
                             ID_LOSS = sum(ID_LOSS)
                         else:
-                            ID_LOSS = xent(score, target)
+                            ID_LOSS = xent(cls_score, target)
 
-                        if isinstance(feat, list):
-                            TRI_LOSS = [triplet(feats, target)[0] for feats in feat[0:]]
+                        if isinstance(image_features, list):
+                            TRI_LOSS = [triplet(feats, target)[0] for feats in image_features[0:]]
                             TRI_LOSS = sum(TRI_LOSS)
                         else:
-                            TRI_LOSS = triplet(feat, target)[0]
+                            TRI_LOSS = triplet(image_features, target)[0]
 
                         loss = config['model']['id_loss_weight'] * ID_LOSS + config['model'][
                             'triplet_loss_weight'] * TRI_LOSS
@@ -61,17 +66,17 @@ class BaseModel(nn.Module):
 
                         return loss
                     else:
-                        if isinstance(score, list):
-                            ID_LOSS = [F.cross_entropy(scor, target) for scor in score[0:]]
+                        if isinstance(cls_score, list):
+                            ID_LOSS = [F.cross_entropy(scor, target) for scor in cls_score[0:]]
                             ID_LOSS = sum(ID_LOSS)
                         else:
-                            ID_LOSS = F.cross_entropy(score, target)
+                            ID_LOSS = F.cross_entropy(cls_score, target)
 
-                        if isinstance(feat, list):
-                            TRI_LOSS = [triplet(feats, target)[0] for feats in feat[0:]]
+                        if isinstance(image_features, list):
+                            TRI_LOSS = [triplet(feats, target)[0] for feats in image_features[0:]]
                             TRI_LOSS = sum(TRI_LOSS)
                         else:
-                            TRI_LOSS = triplet(feat, target)[0]
+                            TRI_LOSS = triplet(image_features, target)[0]
 
                         loss = config['model']['id_loss_weight'] * ID_LOSS + config['model'][
                             'triplet_loss_weight'] * TRI_LOSS
@@ -89,9 +94,9 @@ class BaseModel(nn.Module):
             logger.error('expected sampler should be softmax, triplet, softmax_triplet or softmax_triplet_center'
                          'but got {}'.format(config['dataset']['sampler']))
 
-        return loss_func, center_criterion
+        return loss_func
 
-    def make_optimizer(self, config, model, center_criterion):
+    def make_optimizer(self, config, model):
         params = []
         for key, value in model.named_parameters():
             if not value.requires_grad:
@@ -115,6 +120,10 @@ class BaseModel(nn.Module):
                                           weight_decay=config["solver"]['weight_decay'])
         else:
             optimizer = getattr(torch.optim, config["solver"]['type'])(params)
-        optimizer_center = torch.optim.SGD(center_criterion.parameters(), lr=config["solver"]['center_lr'])
+        return optimizer
 
-        return optimizer, optimizer_center
+    def save(self, save_path):
+        torch.save(self.state_dict(), osp.join(self.config["logging"]["log_dir"], "best_model", "model.pth"))
+
+    def load(self, load_path):
+        self.load_state_dict(torch.load(load_path, map_location="cpu"))

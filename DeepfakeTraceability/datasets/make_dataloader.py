@@ -19,7 +19,13 @@ def collate_fn(batch):
     df_names = list(df_names)
     img_prompts = list(img_prompts)
     img_names = list(img_names)
-    return imgs, df_ids, df_names, img_prompts, img_names
+    return {
+        'imgs': imgs,
+        'df_ids': df_ids,
+        'df_names': df_names,
+        'img_prompts': img_prompts,
+        'img_names': img_names
+    }
 
 def make_dataloader(config):
     accelerator = Accelerator()

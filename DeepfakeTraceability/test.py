@@ -35,12 +35,15 @@ def main():
     parser.add_argument('--config_file', type=str,
                         default='./config/configs_dir/efficientnet.yaml',
                         help='path to detector YAML file')
+    parser.add_argument('--train_config_file', type=str,
+                        default='./config/train_config.yaml',
+                        help='path to train YAML file')
     parser.add_argument("--opts", nargs='+', help="Modify config options using the command-line", default=[])
     args = parser.parse_args()
 
     # parse options and load config
     config = OmegaConf.load(args.config_file)
-    config_train = OmegaConf.load('config/train_config.yaml')
+    config_train = OmegaConf.load(args.train_config_file)
     config = OmegaConf.merge(config_train, config)
     config_args = OmegaConf.from_dotlist(args.opts)
     config = OmegaConf.merge(config, config_args)

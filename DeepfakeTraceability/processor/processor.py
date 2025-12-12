@@ -14,11 +14,10 @@ logger = logging.getLogger(__name__)
 
 @PROCESSOR_FACTORY.register_module("base")
 class Processor(BaseProcessor):
-    def __init__(self, config, model, center_criterion=None, train_loader=None, val_loader=None, optimizer=None,
-                 optimizer_center=None,
+    def __init__(self, config, model, train_loader=None, val_loader=None, optimizer=None,
                  scheduler=None, loss_fn=None, num_query=None, accelerator=None):
-        super(Processor, self).__init__(config, model, center_criterion, train_loader, val_loader, optimizer,
-                                        optimizer_center, scheduler, loss_fn, num_query, accelerator)
+        super(Processor, self).__init__(config, model, train_loader, val_loader, optimizer,
+                                        scheduler, loss_fn, num_query, accelerator)
         self.log_period = self.config["train"]["log_period"]
         self.checkpoint_period = self.config["train"]["checkpoint_period"]
         self.eval_period = self.config["train"]["eval_period"]
@@ -75,27 +74,21 @@ class Processor(BaseProcessor):
         logger.info("Epoch {} done. Time per batch: {:.3f}[s] Speed: {:.1f}[samples/s]"
                          .format(epoch, time_per_batch, self.config["dataset"]["train_batch_size"] / time_per_batch))
 
-    def train_step(self, data):
-        img, df_id, df_name, img_prompt, img_path = data
+    def train_step(self, data_dict):
         # logger.info(f"Process_ID:{self.accelerator.process_index}, df_id:{df_id}, img_path: {list(zip(df_name,img_path))}")
         self.optimizer.zero_grad()
-        self.optimizer_center.zero_grad()
-        target = df_id
         with self.accelerator.autocast():
-            score, feat = self.model(img)
-            loss = self.loss_fn(score, feat, target)
+            output_dict = self.model(data_dict)
+            loss = self.loss_fn(output_dict, data_dict)
         self.accelerator.backward(loss)
         self.optimizer.step()
         self.scheduler.step()
-        if 'center' in self.config["model"]["metric_loss_type"]:
-            for param in self.center_criterion.parameters():
-                param.grad.data *= (1. / self.config["solver"]["center_loss_weight"])
-            self.optimizer_center.step()
+        score, target = output_dict["score"], data_dict["df_ids"]
         if isinstance(score, list):
             acc = (score[0].max(1)[1] == target).float().mean()
         else:
             acc = (score.max(1)[1] == target).float().mean()
-        self.loss_meter.update(loss.item(), img.shape[0])
+        self.loss_meter.update(loss.item(), data_dict['imgs'].shape[0])
         self.acc_meter.update(acc, 1)
 
     def do_validate(self):
@@ -103,12 +96,13 @@ class Processor(BaseProcessor):
         start_time = time.time()
         self.evaluator.reset()
         self.model.eval()
-        for n_iter, (img, df_id, df_name, img_prompt, img_path) in enumerate(tqdm(self.val_loader)):
+        for n_iter, data_dict in enumerate(tqdm(self.val_loader)):
             with torch.no_grad():
                 with self.accelerator.autocast():
-                    feat = self.model(img)
-                    feat, df_id = self.accelerator.gather_for_metrics((feat, df_id))
-                    self.evaluator.update((feat, df_id))
+                    feat = self.model(data)
+                    feat = self.accelerator.gather_for_metrics(feat)
+                    data = self.accelerator.gather_for_metrics(data)
+                    self.evaluator.update((feat, data["df_ids"]))
         cmc, mAP, _, _, _, _ = self.evaluator.compute()
         logger.info("Validation Results - Epoch: {}".format(self.epoch))
         logger.info("mAP: {:.1%}".format(mAP))

@@ -1,6 +1,6 @@
 task_name: "effort"
-#model_weights: /home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability/logs/clip_vit_l14_triplet_train_20251030032115/best_model/model.pth
-model_weights: null
+model_weights: /home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability/logs/effort_train_20251104204224/best_model/model.pth
+#model_weights: null
 model:
   name: "effort"
   pretrained: null
@@ -28,7 +28,7 @@ test:
 
 solver:
   type: "Adam"
-  base_lr: 0.003
+  base_lr: 0.03
   weight_decay: 0.0005
   weight_decay_bias: 0.0005
   bias_lr_factor: 0.1
@@ -49,6 +49,8 @@ dataset:
   test_batch_size: 64
   num_instances: 12
   sampler: "softmax_triplet"
+  mean: [ 0.485, 0.456, 0.406 ]
+  std: [ 0.229, 0.224, 0.225 ]
   use_data_augmentation: true  # Add this flag to enable/disable data augmentation
   data_aug:
     flip_prob: 0.5
