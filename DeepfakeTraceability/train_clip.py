@@ -136,7 +136,7 @@ def main():
         processor.epoch = config["resume_epoch"]
         logger.info("Resume from checkpoint: {}".format(config["resume"]))
 
-    # processor.do_train_stage1()
+    processor.do_train_stage1()
     best_metrics = processor.do_train_stage2()
 
     logger.info("Stop Training on best Testing metric \n{}".format(parse_metric_for_print(best_metrics)))

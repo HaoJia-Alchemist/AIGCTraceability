@@ -53,14 +53,14 @@ class PromptLearnCaptionProcessor(BaseProcessor):
         xent = SupConLoss(self.accelerator.device)
         logger.info("Starting to extract image feature ...")
         with torch.no_grad():
-            for n_iter, (img, df_id, df_name, img_prompt, img_path) in enumerate(tqdm(self.train_loader_stage1)):
+            for n_iter, data_dict in enumerate(tqdm(self.train_loader_stage1)):
                 with self.accelerator.autocast():
-                    image_feature = self.model(img, get_image=True)
+                    image_feature = self.model(data_dict, get_image=True)
 
                     # img_prompt 通常是 tuple (batch_size,), 转为 list
-                    batch_prompts = list(img_prompt)
+                    batch_prompts = list(data_dict['img_prompts'])
 
-                    for i, img_feat, prompt in zip(df_id, image_feature, batch_prompts):
+                    for i, img_feat, prompt in zip(data_dict['df_ids'], image_feature, batch_prompts):
                         labels.append(i)
                         image_features.append(img_feat.cpu())
                         prompts_list.append(prompt)  # 收集 prompt
@@ -137,14 +137,6 @@ class PromptLearnCaptionProcessor(BaseProcessor):
                 text_features.append(text_feature.cpu())
             text_features = torch.cat(text_features, 0).to(self.accelerator.device)
 
-        logger.info("do valid!")
-        cmc, mAP = self.do_validate()
-        best_metrics = {"mAP": mAP, "Rank@1": cmc[0], "Rank@5": cmc[4], "Rank@10": cmc[9], "Epoch": 0}
-        logger.info(
-            "===> Best mAP: {:.3f}, Rank@1: {:.3f}, Rank@5: {:.3f}, Rank@10: {:.3f}, Epoch: {}".format(
-                best_metrics["mAP"], best_metrics["Rank@1"], best_metrics["Rank@5"],
-                best_metrics["Rank@10"], best_metrics["Epoch"]))
-
         logger.info("Starting to train image encoder")
         self.model.train()
         all_start_time = time.monotonic()
@@ -154,22 +146,22 @@ class PromptLearnCaptionProcessor(BaseProcessor):
             self.acc_meter.reset()
             self.evaluator.reset()
             self.model.train()
-            for n_iter, (img, df_id, df_name, img_prompt, img_path) in enumerate(tqdm(self.train_loader_stage2)):
+            for n_iter, data_dict in enumerate(tqdm(self.train_loader_stage2)):
                 self.optimizer_stage2.zero_grad()
-                batch_prompts = list(img_prompt)
+                batch_prompts = list(data_dict['img_prompts'])
                 with (self.accelerator.autocast()):
-                    output_dict = self.model(x=img, label=df_id, captions=batch_prompts)
+                    output_dict = self.model(data_dict, captions=batch_prompts)
 
                     logits = output_dict['image_features'] @ text_features.t()
-                    loss = self.loss_fn(output_dict, df_id, logits)
+                    loss = self.loss_fn(output_dict, data_dict['df_ids'], logits)
 
                 self.accelerator.backward(loss)
                 self.optimizer_stage2.step()
                 self.scheduler_stage2.step()
 
-                acc = (logits.max(1)[1] == df_id).float().mean()
+                acc = (logits.max(1)[1] == data_dict['df_ids']).float().mean()
 
-                self.loss_meter.update(loss.item(), img.shape[0])
+                self.loss_meter.update(loss.item(), data_dict['imgs'].shape[0])
                 self.acc_meter.update(acc, 1)
 
                 if (n_iter + 1) % self.log_period == 0:
@@ -208,9 +200,10 @@ class PromptLearnCaptionProcessor(BaseProcessor):
         start_time = time.time()
         self.evaluator.reset()
         self.model.eval()
-        for n_iter, (img, df_id, df_name, img_prompt, img_path) in enumerate(tqdm(self.val_loader)):
+        for n_iter, data_dict in enumerate(tqdm(self.val_loader)):
+            df_id = data_dict['df_ids']
             with torch.no_grad():
-                feat = self.model(img)
+                feat = self.model(data_dict)
                 feat, df_id = self.accelerator.gather_for_metrics((feat, df_id))
                 self.evaluator.update((feat, df_id))
         cmc, mAP, _, _, _, _ = self.evaluator.compute()
@@ -222,5 +215,5 @@ class PromptLearnCaptionProcessor(BaseProcessor):
         end_time = time.time()
         time_per_batch = (end_time - start_time) / len(self.val_loader)
         logger.info("===> Validation Epoch {} done. Total time: {:.3f}[s]"
-                         .format(self.epoch, end_time - start_time))
+                    .format(self.epoch, end_time - start_time))
         return cmc, mAP

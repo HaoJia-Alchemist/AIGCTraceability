@@ -1,8 +1,8 @@
-task_name: "clip_vit_l14_prompt_learn_caption"
-model_weights: /home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability/logs/clip_vit_l14_prompt_learn_caption_20251128141410/best_model/model.pth
-#mdoel_weights: null
+task_name: "clip_vit_l14_prompt_caption_decoupling"
+#model_weights: /home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability/logs/clip_vit_l14_prompt_learn_caption_20251128141410/best_model/model.pth
+mdoel_weights: null
 model:
-  name: "CLIP_ViT_L14_Model_Prompt_Caption"
+  name: "Prompt_Caption_Decoupling"
   backbone: "ViT-L/14"
   pretrained: null
   feat_dim: 1024

@@ -34,7 +34,7 @@ def weights_init_classifier(m):
     classname = m.__class__.__name__
     if classname.find('Linear') != -1:
         nn.init.normal_(m.weight, std=0.001)
-        if m.bias:
+        if m.bias is not None:
             nn.init.constant_(m.bias, 0.0)
 
 
@@ -100,7 +100,7 @@ class Prompt_Caption_Decoupling(BaseModel):
 
         elif sampler == 'softmax_triplet':
             def loss_func(output_dict, target, i2tscore=None):
-                score, feat = output_dict['score'], output_dict['feat']
+                score, feat = output_dict['cls_score'], output_dict['feat']
                 if config['model']['metric_loss_type'] == 'triplet':
                     if config['model']['if_label_smooth'] == 'on':
                         if isinstance(score, list):
@@ -163,7 +163,7 @@ class Prompt_Caption_Decoupling(BaseModel):
         return loss_func
 
 
-    def forward(self, x=None, label=None, captions=None, get_image=False, get_text=False):
+    def forward(self, data_dict=None, label=None, captions=None, get_image=False, get_text=False):
         # --- 分支 1: Stage 1/2 获取文本特征 (CoOp Prompts) ---
         # Processor 调用: model(label=target, get_text=True)
         if get_text:
@@ -173,7 +173,7 @@ class Prompt_Caption_Decoupling(BaseModel):
 
         # --- 分支 2: Stage 1 获取图像特征 ---
         # Processor 调用: model(img, get_image=True)
-
+        x = data_dict['imgs']
         image_features = self.image_encoder(x)['pooler_output']
         image_features_proj = self.visual_projection(image_features)
 
