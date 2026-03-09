@@ -82,7 +82,9 @@ pip install -r requirements.txt
 
 ### 下载数据集
 
-数据集下载路径：https:xxxx
+![](./images/dataset.png)
+
+数据集下载路径：https://pan.baidu.com/s/1wAZ4pc6xQ8YCSsKtzqkMEw?pwd=vjwx 
 
 请将数据集解压到指定目录，并修改配置文件中的路径。
 
