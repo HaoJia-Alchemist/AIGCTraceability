@@ -33,7 +33,7 @@ class EfficientNetModel(BaseModel):
     def __init__(self, config=None, num_classes=10):
         super(EfficientNetModel, self).__init__(config, num_classes)
         self.in_planes = 1792
-        self.efficientnet = EfficientNet.from_pretrained('efficientnet-b4', weights_path=self.config[
+        self.efficientnet = EfficientNet.from_pretrained('efficientnet-b4', weights_path=self.config['model'][
             'pretrained'])
 
         del self.efficientnet._fc
@@ -45,15 +45,16 @@ class EfficientNetModel(BaseModel):
         self.bottleneck.bias.requires_grad_(False)
         self.bottleneck.apply(weights_init_kaiming)
 
-    def forward(self, x):
+    def forward(self, data_dict):
+        x = data_dict.get('imgs')
         img_feature = self.efficientnet.extract_features(x)
         img_feature = self.efficientnet._avg_pooling(img_feature)
         img_feature = img_feature.flatten(start_dim=1)
         feat = self.bottleneck(img_feature)
         if self.training:
             cls_score = self.classifier(feat)
-            return cls_score, img_feature
-
+            return {"cls_score": cls_score,
+            "image_features": feat}
         else:
             if self.config["test"]["neck_feat"] == 'after':
                 return feat

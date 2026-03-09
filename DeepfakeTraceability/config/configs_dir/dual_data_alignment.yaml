@@ -1,9 +1,8 @@
-task_name: "clip_vit_l14"
-model_weights: /home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability/logs/clip_vit_l14_triplet_train_20251030032115/best_model/model.pth
+task_name: "dual_data_alignment"
+model_weights: /autodl-fs/data/pretrained/DDA_ckpt.pth
 model:
-  name: "clip_vit_l14"
-  pretrained: null
-  feat_dim: 1024
+  name: "dual_data_alignment"
+  feat_dim: 1792
   metric_loss_type: "triplet"
   no_margin: false
   if_label_smooth: "on"
@@ -32,7 +31,7 @@ test:
 
 solver:
   type: "Adam"
-  base_lr: 0.03
+  base_lr: 0.003
   weight_decay: 0.0005
   weight_decay_bias: 0.0005
   bias_lr_factor: 0.1
@@ -48,11 +47,11 @@ solver:
   warmup_method: "linear"
 
 dataset:
-  resolution: 224
-  train_batch_size: 48
+  resolution: 336
+  train_batch_size: 64
   test_batch_size: 64
-  num_instances: 12
-  sampler: "softmax_triplet"
+  num_instances: 16
+  sampler: "softmax"
   use_data_augmentation: true  # Add this flag to enable/disable data augmentation
   data_aug:
     flip_prob: 0.5

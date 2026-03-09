@@ -1,8 +1,8 @@
-task_name: "effort"
-model_weights: /home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability/logs/effort_train_20251104204224/best_model/model.pth
-#model_weights: null
+task_name: "lora_coop_decouple"
+#model_weights: /home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability/logs/effort_coop_20251210201036/best_model/model.pth
+model_weights: null
 model:
-  name: "effort"
+  name: "lora_coop_decouple"
   pretrained: null
   feat_dim: 1024
   metric_loss_type: "triplet"
@@ -11,13 +11,15 @@ model:
   id_loss_weight: 1.0
   triplet_loss_weight: 1.0
   i2t_loss_weight: 1.0
+  caption_loss: 1.0
 
 train:
-  processor: "base"
+  processor: "prompt_learn_caption"
   log_period: 50
   checkpoint_period: 1
   eval_period: 1
-  max_epoch: 20
+  max_epoch_stage1: 5
+  max_epoch_stage2: 20
 
 test:
   feat_norm: "yes"
@@ -28,31 +30,42 @@ test:
   pca_dim: 128
   use_clustering: false
   n_clusters: 100
-  use_medoid: true
+  use_medoid: false
 
 
 solver:
-  type: "Adam"
-  base_lr: 0.03
-  weight_decay: 0.0005
-  weight_decay_bias: 0.0005
-  bias_lr_factor: 0.1
-  large_fc_lr: false
-  momentum: 0.9
   margin: 0.3
-  center_lr: 0.5
-  center_loss_weight: 0.005
-  steps: [40, 70]
-  gamma: 0.1
-  warmup_factor: 0.01
-  warmup_iters: 500
-  warmup_method: "linear"
+  stage1:
+    type: "Adam"
+    base_lr: 0.0003
+    weight_decay: 0.0005
+    weight_decay_bias: 0.0005
+    momentum: 0.9
+    lr_min: 1e-6
+    warmup_lr_init: 0.00001
+    warmup_epoch: 3
+  stage2:
+    type: "Adam"
+    base_lr: 0.03
+    weight_decay: 0.0005
+    weight_decay_bias: 0.0005
+    momentum: 0.9
+    bias_lr_factor: 0.1
+    large_fc_lr: true
+    center_lr: 0.5
+    center_loss_weight: 0.005
+    steps: [10, 15]
+    gamma: 0.1
+    warmup_factor: 0.01
+    warmup_iters: 500
+    warmup_method: "linear"
 
 dataset:
   resolution: 224
   train_batch_size: 48
   test_batch_size: 64
   num_instances: 12
+  num_classes: 15
   sampler: "softmax_triplet"
   mean: [ 0.485, 0.456, 0.406 ]
   std: [ 0.229, 0.224, 0.225 ]

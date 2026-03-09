@@ -30,9 +30,9 @@ class DFT30(BaseImageDataset):
         self.df_id_begin = 0
         self.df_id_name_map = {}
         self.df_name_id_map = {}
-        train = self._process_dir(self.dataset_dir, self.train_dataset_info, relabel=True)
-        query = self._process_dir(self.dataset_dir, self.query_dataset_info, relabel=False)
-        gallery = self._process_dir(self.dataset_dir, self.gallery_dataset_info, relabel=False)
+        train = self._process_dir(self.dataset_dir, self.train_dataset_info, relabel=True, train=True)
+        query = self._process_dir(self.dataset_dir, self.query_dataset_info, relabel=False, query=True)
+        gallery = self._process_dir(self.dataset_dir, self.gallery_dataset_info, relabel=False, gallery=True)
 
         if self.config.get('verbose', False):
             logger.info("=> DFT30 loaded")
@@ -46,16 +46,37 @@ class DFT30(BaseImageDataset):
         self.num_query_df_ids, self.num_query_imgs = self.get_imagedata_info(self.query)
         self.num_gallery_df_ids, self.num_gallery_imgs= self.get_imagedata_info(self.gallery)
 
-    def _process_dir(self, dir_path, dataset_info, relabel=False):
+    def _process_dir(self, dir_path, dataset_info, relabel=False, train=False, query=False, gallery=False):
         dataset = []
         for df_name in dataset_info:
-            for img_info in dataset_info[df_name]:
-                img_path = osp.join(dir_path, df_name, img_info['image'])
-                img_prompt = img_info['prompt']
-                if df_name not in self.df_name_id_map:
-                    self.df_id_name_map[self.df_id_begin] = df_name
-                    self.df_name_id_map[df_name] = self.df_id_begin
-                    self.df_id_begin += 1
-                df_id = self.df_name_id_map[df_name]
-                dataset.append((img_path, df_id, img_prompt))
+            if train:
+                for img_info in dataset_info[df_name]:
+                    img_path = osp.join(dir_path, df_name, img_info['image'])
+                    img_prompt = img_info['prompt']
+                    if df_name not in self.df_name_id_map:
+                        self.df_id_name_map[self.df_id_begin] = df_name
+                        self.df_name_id_map[df_name] = self.df_id_begin
+                        self.df_id_begin += 1
+                    df_id = self.df_name_id_map[df_name]
+                    dataset.append((img_path, df_id, img_prompt))
+            elif query:
+                for img_info in dataset_info[df_name]:
+                    img_path = osp.join(dir_path, df_name, img_info['image'])
+                    img_prompt = img_info['prompt']
+                    if df_name not in self.df_name_id_map:
+                        self.df_id_name_map[self.df_id_begin] = df_name
+                        self.df_name_id_map[df_name] = self.df_id_begin
+                        self.df_id_begin += 1
+                    df_id = self.df_name_id_map[df_name]
+                    dataset.append((img_path, df_id, img_prompt))
+            elif gallery:
+                for img_info in dataset_info[df_name]:
+                    img_path = osp.join(dir_path, df_name, img_info['image'])
+                    img_prompt = img_info['prompt']
+                    if df_name not in self.df_name_id_map:
+                        self.df_id_name_map[self.df_id_begin] = df_name
+                        self.df_name_id_map[df_name] = self.df_id_begin
+                        self.df_id_begin += 1
+                    df_id = self.df_name_id_map[df_name]
+                    dataset.append((img_path, df_id, img_prompt))
         return dataset

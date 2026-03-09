@@ -41,14 +41,14 @@ def weights_init_classifier(m):
         if m.bias:
             nn.init.constant_(m.bias, 0.0)
 
-@MODEL_FACTORY.register_module(module_name='clip_vit_l14')
-class CLIP_ViT_L14_Model(BaseModel):
+@MODEL_FACTORY.register_module(module_name='clip_vit_b16')
+class CLIP_ViT_B16_Model(BaseModel):
     def __init__(self, config=None, num_classes=10):
-        super(CLIP_ViT_L14_Model, self).__init__(config, num_classes)
+        super(CLIP_ViT_B16_Model, self).__init__(config, num_classes)
         self.config = config
         self.epoch = 0
         self.num_classes = num_classes
-        self.in_planes = 1024
+        self.in_planes = 768
 
         self.backbone = self.build_backbone(config)
 
@@ -69,7 +69,7 @@ class CLIP_ViT_L14_Model(BaseModel):
 
         # ViT-L/14 224*224
         clip_model = CLIPModel.from_pretrained(
-            "openai/clip-vit-large-patch14")  # the path of this folder in your disk (download from the above link)
+            "openai/clip-vit-base-patch16")  # the path of this folder in your disk (download from the above link)
 
         return clip_model.vision_model
 
@@ -78,13 +78,13 @@ class CLIP_ViT_L14_Model(BaseModel):
         return feat
 
     def forward(self, data_dict) -> dict:
-        x = data_dict['imgs']
+        x = data_dict.get('imgs')
         img_feature = self.features(x)
         feat = self.bottleneck(img_feature)
         if self.training:
             cls_score = self.classifier(feat)
             return {"cls_score": cls_score,
-                    "image_features": img_feature}
+                    "image_features": feat}
 
         else:
             if self.config["test"]["neck_feat"] == 'after':

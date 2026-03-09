@@ -37,6 +37,18 @@ def create_logger(config):
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
+    # 获取 accelerate 的 logger
+    acc_logger = logging.getLogger("accelerate.utils.other")
+
+    # 定义一个过滤器
+    class RemoveSharedTensorWarningFilter(logging.Filter):
+        def filter(self, record):
+            # 如果日志消息中包含该字符串，则返回 False (不显示)
+            return "Removed shared tensor" not in record.getMessage()
+
+    # 应用过滤器
+    acc_logger.addFilter(RemoveSharedTensorWarningFilter())
+
     # 5. 仅在主进程添加 Handler
     # 这是解决多进程重复打印最根本、最有效的方法
     if accelerator.is_main_process:

@@ -99,7 +99,7 @@ class PromptLearnProcessor(BaseProcessor):
 
     def do_train_stage2(self):
         logger.info("Start train stage 2 ...")
-        best_metrics = {"mAP": 0.0, "Rank@1": 0.0, "Rank@5": 0.0, "Rank@10": 0.0, "Epoch": 0}
+        best_metrics = {"mAP": 0.0, "Rank@1": 0.0, "Rank@3": 0.0, "Rank@5": 0.0, "Rank@10": 0.0, "Epoch": 0}
         # train
         batch = self.config['dataset']['train_batch_size']
         i_ter = self.config['dataset']['num_classes'] // batch
@@ -159,10 +159,10 @@ class PromptLearnProcessor(BaseProcessor):
             if epoch % self.eval_period == 0 or epoch == self.max_epoch_stage2 - 1:
                 cmc, mAP = self.do_validate()
                 if mAP > best_metrics["mAP"]:
-                    best_metrics = {"mAP": mAP, "Rank@1": cmc[0], "Rank@5": cmc[4], "Rank@10": cmc[9], "Epoch": epoch}
+                    best_metrics = {"mAP": mAP, "Rank@1": cmc[0], "Rank@3": cmc[2], "Rank@5": cmc[4], "Rank@10": cmc[9], "Epoch": epoch}
                     logger.info(
-                        "===> Best mAP: {:.3f}, Rank@1: {:.3f}, Rank@5: {:.3f}, Rank@10: {:.3f}, Epoch: {}".format(
-                            best_metrics["mAP"], best_metrics["Rank@1"], best_metrics["Rank@5"],
+                        "===> Best mAP: {:.3f}, Rank@1: {:.3f}, Rank@3: {:.3f}, Rank@5: {:.3f}, Rank@10: {:.3f}, Epoch: {}".format(
+                            best_metrics["mAP"], best_metrics["Rank@1"], best_metrics["Rank@3"],best_metrics["Rank@5"],
                             best_metrics["Rank@10"], best_metrics["Epoch"]))
                     if self.accelerator.is_main_process:
                         self.save_model()
@@ -205,7 +205,7 @@ class PromptLearnProcessor(BaseProcessor):
         cmc, mAP, _, _, _, _ = self.evaluator.compute()
         logger.info("Validation Results - Epoch: {}".format(self.epoch))
         logger.info("mAP: {:.1%}".format(mAP))
-        for r in [1, 5, 10]:
+        for r in [1, 3, 5, 10]:
             logger.info("CMC curve, Rank-{:<3}:{:.1%}".format(r, cmc[r - 1]))
         torch.cuda.empty_cache()
         end_time = time.time()

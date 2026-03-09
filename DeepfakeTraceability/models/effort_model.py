@@ -62,8 +62,9 @@ class EffortDetector(BaseModel):
 
         # Apply SVD to self_attn layers only
         # ViT-L/14 224*224: 1024-1
-        clip_model.vision_model = apply_svd_residual_to_self_attn(clip_model.vision_model, r=1024 - 1)
-
+        # clip_model.vision_model = apply_svd_residual_to_self_attn(clip_model.vision_model, r=1024 - 1)
+        # for param in clip_model.vision_model.parameters():
+        #     param.requires_grad = False
 
 
         return clip_model.vision_model
@@ -75,50 +76,6 @@ class EffortDetector(BaseModel):
     def classifier(self, features: torch.tensor) -> torch.tensor:
         return self.head(features)
 
-    def make_loss(self, config, num_classes=10):
-        sampler = config['dataset']['sampler']
-        if 'triplet' in config['model']['metric_loss_type']:
-            if config['model']['no_margin']:
-                triplet = TripletLoss()
-                logger.info("using soft triplet loss for training")
-            else:
-                triplet = TripletLoss(config['solver']['margin'])  # triplet loss
-                logger.info("using triplet loss with margin:{}".format(config['solver']['margin']))
-        xent = CrossEntropyLabelSmooth(num_classes=num_classes)
-        def loss_func(score, feat, target, i2tscore=None):
-            if config['model']['metric_loss_type'] == 'triplet':
-                if config['model']['if_label_smooth'] == 'on':
-                    if isinstance(score, list):
-                        ID_LOSS = [xent(scor, target) for scor in score[0:]]
-                        ID_LOSS = sum(ID_LOSS)
-                    else:
-                        ID_LOSS = xent(score, target)
-
-                    if isinstance(feat, list):
-                        TRI_LOSS = [triplet(feats, target)[0] for feats in feat[0:]]
-                        TRI_LOSS = sum(TRI_LOSS)
-                    else:
-                        TRI_LOSS = triplet(feat, target)[0]
-
-                    loss = config['model']['id_loss_weight'] * ID_LOSS + config['model']['triplet_loss_weight'] * TRI_LOSS
-
-                    if i2tscore != None:
-                        I2TLOSS = xent(i2tscore, target)
-                        loss = config['model']['i2t_loss_weight'] * I2TLOSS + loss
-
-
-                    # lambda_reg = 1.0
-                    # reg_term = 0.0
-                    # num_reg = 0
-                    # for module in self.backbone.modules():
-                    #     if isinstance(module, SVDResidualLinear):
-                    #         reg_term += module.compute_orthogonal_loss()
-                    #         reg_term += module.compute_keepsv_loss()
-                    #         num_reg += 1
-                    # loss += lambda_reg * reg_term / num_reg
-
-                    return loss
-        return loss_func
 
     # def get_losses(self, data_dict: dict, pred_dict: dict) -> dict:
     #    label = data_dict['label']
@@ -161,11 +118,14 @@ class EffortDetector(BaseModel):
         loss2 /= len(weight_sum_dict.keys())
         return loss2
 
-    def forward(self, x) -> dict:
+    def forward(self, data_dict) -> dict:
+        x = data_dict['imgs']
         img_feature = self.features(x)
         feat = self.bottleneck(img_feature)
         if self.training:
             cls_score = self.classifier(feat)
+            return  {"cls_score": cls_score,
+                    "image_features": img_feature}
             return cls_score, img_feature
 
         else:

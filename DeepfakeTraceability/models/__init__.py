@@ -14,6 +14,10 @@ from .effort_model_vit_l_14 import EffortViTL14Detector
 from .clip_vit_l14_model_adapter_prompt import CLIP_ViT_L14_Model_Adapter_Prompt
 from .lora_coop_model import LoraCoopDetector
 from .prompt_caption_decoupling import Prompt_Caption_Decoupling
+from .xception_model import XceptionModel
+from .clip_vit_b16_model import CLIP_ViT_B16_Model
+from .dual_data_alignment import Dual_Data_Alignment
+# from .lora_coop_decouple import LoraCoopDecoupleDetector
 __all__ = [
     'make_model',
     'EfficientNetModel',
@@ -28,5 +32,9 @@ __all__ = [
     'EffortViTL14Detector',
     'CLIP_ViT_L14_Model_Adapter_Prompt',
     'LoraCoopDetector',
-    'Prompt_Caption_Decoupling'
+    'Prompt_Caption_Decoupling',
+    'XceptionModel',
+    'CLIP_ViT_B16_Model',
+    'Dual_Data_Alignment',
+    # 'LoraCoopDecoupleDetector'
 ]

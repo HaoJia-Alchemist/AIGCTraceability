@@ -17,7 +17,10 @@ from solver.cosine_lr import CosineLRScheduler
 from solver.lr_scheduler import WarmupMultiStepLR
 from utils.logger import create_logger
 from utils.metrics import parse_metric_for_print
+import transformers
 
+# 只显示 Error，屏蔽 Warning 和 Info
+transformers.logging.set_verbosity_error()
 
 # from DeepfakeTraceability.datasets import FalDataset
 # from DeepfakeTraceability.datasets import GANBlendingDataset
@@ -130,6 +133,9 @@ def main():
     processor = processor_class(config, model, train_loader_stage1, train_loader_stage2, val_loader,
                                 optimizer_stage1, optimizer_stage2,
                                 scheduler_stage1, scheduler_stage2, loss_func, num_query, accelerator)
+
+    # processor = processor_class(config, model, train_loader_stage2, val_loader, optimizer_stage2,
+    #                             scheduler_stage2, loss_func, num_query, accelerator)
 
     if config["resume"]:
         processor.load_state(config["resume"])

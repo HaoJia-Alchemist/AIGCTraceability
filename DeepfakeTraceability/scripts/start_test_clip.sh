@@ -33,7 +33,9 @@ fi
 #CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" test.py --config "./config/configs_dir/resnet50.yaml"
 
 #CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" test.py --config "./config/configs_dir/clip_vit_l14.yaml"
-CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" test.py --train_config_file "$train_config_file"  --config "./config/configs_dir/effort_coop.yaml"
+
+CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" test.py --train_config_file "$train_config_file"  --config "./config/configs_dir/prompt_caption_decoupling.yaml"
+
 #CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" test.py --config "./config/configs_dir/prompt_learn_caption.yaml"
 
 

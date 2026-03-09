@@ -300,34 +300,27 @@ class PromptLearner(nn.Module):
 
 
 class TextEncoder(nn.Module):
+    # ... (保持原有的 TextEncoder 代码) ...
     def __init__(self, clip_model):
         super().__init__()
         self.clip_model = clip_model
         self.text_model = clip_model.text_model
         self.text_projection = clip_model.text_projection
-        self.hidden_size = clip_model.config.text_config.hidden_size
 
     def forward(self, prompts, tokenized_prompts):
-        """
-        prompts: [batch_size, n_ctx, d_model] - 这里的 prompts 通常是类似 CoOp 的 learnable vectors
-        tokenized_prompts: [batch_size, n_ctx] - token id，用于定位 EOT
-        """
         attention_mask = (tokenized_prompts != 49407).long()
-        hidden_states = self.text_model.embeddings(inputs_embeds=prompts)
         bsz, seq_len = tokenized_prompts.shape
         extended_attention_mask = self.clip_model.get_extended_attention_mask(
-            attention_mask, (bsz, seq_len), prompts.device
+            attention_mask,
+            (bsz, seq_len),
+            dtype=self.clip_model.dtype
         )
-        encoder_outputs = self.text_model.encoder(
-            hidden_states,
-            attention_mask=extended_attention_mask,
-        )
-        last_hidden_state = encoder_outputs.last_hidden_state
-        last_hidden_state = self.text_model.final_layer_norm(last_hidden_state)
+        hidden_states = self.text_model.embeddings(inputs_embeds=prompts.to(self.clip_model.device))
+        encoder_outputs = self.text_model.encoder(hidden_states, attention_mask=extended_attention_mask)
+        last_hidden_state = self.text_model.final_layer_norm(encoder_outputs.last_hidden_state)
         eot_indices = tokenized_prompts.argmax(dim=-1)
         pooled_output = last_hidden_state[torch.arange(bsz), eot_indices]
-        text_features = self.text_projection(pooled_output)
-        return text_features
+        return self.text_projection(pooled_output)
 
     def encode_caption(self, text):
         """

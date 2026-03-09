@@ -23,6 +23,11 @@ test:
   processor: "base"
   neck_feat: "after"
   re_ranking: true
+  use_pca: false
+  pca_dim: 128
+  use_clustering: false
+  n_clusters: 100
+  use_medoid: true
 
 
 solver:

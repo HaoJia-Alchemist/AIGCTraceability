@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import torch.nn.parallel
 import torch.utils.data
-from accelerate import Accelerator
+from accelerate import Accelerator, DistributedDataParallelKwargs
 from omegaconf import OmegaConf
 
 from datasets import make_dataloader
@@ -61,7 +61,8 @@ def main():
 
     # 初始化Accelerator（用于获取进程信息）
     try:
-        accelerator = Accelerator()
+        ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
+        accelerator = Accelerator(kwargs_handlers=[ddp_kwargs])
         device = accelerator.device
     except:
         accelerator = None

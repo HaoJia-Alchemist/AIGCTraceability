@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import torch.nn.parallel
 import torch.utils.data
-from accelerate import Accelerator
+from accelerate import Accelerator, DistributedDataParallelKwargs
 from omegaconf import OmegaConf
 
 from datasets import make_dataloader
@@ -50,7 +50,8 @@ def main():
 
     # 初始化Accelerator（用于获取进程信息）
     try:
-        accelerator = Accelerator()
+        ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
+        accelerator = Accelerator(kwargs_handlers=[ddp_kwargs])
         device = accelerator.device
     except:
         accelerator = None
@@ -84,7 +85,7 @@ def main():
     processor = processor_class(config, model, val_loader=val_loader, num_query=num_query, accelerator=accelerator)
     processor.load_model(config["model_weights"])
     cmc ,mAP = processor.do_validate()
-    best_metrics = {"mAP": mAP, "Rank@1": cmc[0], "Rank@5": cmc[4], "Rank@10": cmc[9]}
+    best_metrics = {"mAP": mAP, "Rank@1": cmc[0], "Rank@3": cmc[2], "Rank@5": cmc[4], "Rank@10": cmc[9]}
     logger.info("Stop Testing on best Testing metric \n{}".format(parse_metric_for_print(best_metrics)))
 
 

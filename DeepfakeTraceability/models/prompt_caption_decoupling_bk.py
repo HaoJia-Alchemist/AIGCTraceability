@@ -5,8 +5,11 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import CLIPModel, CLIPTokenizer
+from transformers import CLIPModel, CLIPTokenizer, CLIPProcessor
+import transformers
 
+# 只显示 Error，屏蔽 Warning 和 Info
+transformers.logging.set_verbosity_error()
 from loss import CenterLoss, CrossEntropyLabelSmooth, TripletLoss
 from . import MODEL_FACTORY
 from .base_model import BaseModel
@@ -34,51 +37,133 @@ def weights_init_classifier(m):
     classname = m.__class__.__name__
     if classname.find('Linear') != -1:
         nn.init.normal_(m.weight, std=0.001)
-        if m.bias:
+        if m.bias is not None:
             nn.init.constant_(m.bias, 0.0)
 
 
-def contrastive_loss(logits: torch.Tensor) -> torch.Tensor:
-    return nn.functional.cross_entropy(logits, torch.arange(len(logits), device=logits.device))
 
 
-def clip_loss(similarity: torch.Tensor) -> torch.Tensor:
-    caption_loss = contrastive_loss(similarity)
-    image_loss = contrastive_loss(similarity.t())
-    return (caption_loss + image_loss) / 2.0
-
-
-@MODEL_FACTORY.register_module(module_name='effort_coop')
-class EffortCoopDetector(BaseModel):
+@MODEL_FACTORY.register_module(module_name='Prompt_Caption_Decoupling')
+class Prompt_Caption_Decoupling(BaseModel):
     def __init__(self, config=None, num_classes=10):
-        super(EffortCoopDetector, self).__init__(config, num_classes)
+        super(Prompt_Caption_Decoupling, self).__init__(config, num_classes)
         model_name = "openai/clip-vit-large-patch14"
-        self.in_planes = 1024
-        self.in_planes_proj = 768
+        self.vision_width = 1024
+        self.embed_dim = 768
 
-        clip_model = CLIPModel.from_pretrained(model_name)
+        self.clip_model = CLIPModel.from_pretrained(model_name)
+        text_processor = CLIPProcessor.from_pretrained(model_name)
 
-        self.classifier = nn.Linear(self.in_planes, self.num_classes, bias=False)
-        self.classifier.apply(weights_init_classifier)
-        self.classifier_proj = nn.Linear(self.in_planes_proj, self.num_classes, bias=False)
+        self.image_encoder = self.clip_model.vision_model
+        self.visual_projection = self.clip_model.visual_projection
+
+        self.content_adapter = FeatureDecoupler(self.embed_dim, self.embed_dim)
+        self.artifact_adapter = FeatureDecoupler(self.vision_width, self.embed_dim)
+
+        self.classifier_proj = nn.Linear(self.embed_dim, self.num_classes, bias=False)
         self.classifier_proj.apply(weights_init_classifier)
 
-        self.bottleneck = nn.BatchNorm1d(self.in_planes)
-        self.bottleneck.bias.requires_grad_(False)
-        self.bottleneck.apply(weights_init_kaiming)
-
-        self.bottleneck_proj = nn.BatchNorm1d(self.in_planes_proj)
+        self.bottleneck_proj = nn.BatchNorm1d(self.embed_dim)
         self.bottleneck_proj.bias.requires_grad_(False)
         self.bottleneck_proj.apply(weights_init_kaiming)
 
-        clip_model.vision_model = apply_svd_residual_to_self_attn(clip_model.vision_model, r=1024 - 1)
-        self.image_encoder = clip_model.vision_model
-        self.visual_projection = clip_model.visual_projection
+        self.clip_model.vision_model = apply_svd_residual_to_self_attn(self.clip_model.vision_model, r=1024 - 1)
+        self.image_encoder = self.clip_model.vision_model
+        self.visual_projection = self.clip_model.visual_projection
 
-        self.prompt_learner = PromptLearner(num_classes, clip_model=clip_model)
-        self.text_encoder = TextEncoder(clip_model)
+        # === Tokenizer ===
+        self.tokenizer = CLIPTokenizer.from_pretrained(model_name)
 
-    def forward(self, data_dict=None, label=None, get_image=False, get_text=False):
+        self.prompt_learner = PromptLearner(num_classes, clip_model=self.clip_model, tokenizer=self.tokenizer)
+        self.text_encoder = TextEncoder(self.clip_model)
+
+    def make_loss(self, config, num_classes=10):
+        sampler = config['dataset']['sampler']
+        if 'triplet' in config['model']['metric_loss_type']:
+            if config['model']['no_margin']:
+                triplet = TripletLoss()
+                logger.info("using soft triplet loss for training")
+            else:
+                triplet = TripletLoss(config['solver']['margin'])  # triplet loss
+                logger.info("using triplet loss with margin:{}".format(config['solver']['margin']))
+        else:
+            logger.error('expected METRIC_LOSS_TYPE should be triplet'
+                         'but got {}'.format(config['model']['metric_loss_type']))
+
+        if config['model']['if_label_smooth'] == 'on':
+            xent = CrossEntropyLabelSmooth(num_classes=num_classes)
+            logger.info("label smooth on, num_classes: {}".format(num_classes))
+
+        if sampler == 'softmax':
+            def loss_func(score, feat, target):
+                return F.cross_entropy(score, target)
+
+        elif sampler == 'softmax_triplet':
+            def loss_func(output_dict, target, i2tscore=None):
+                score, feat = output_dict['cls_score'], output_dict['feat']
+                if config['model']['metric_loss_type'] == 'triplet':
+                    if config['model']['if_label_smooth'] == 'on':
+                        if isinstance(score, list):
+                            ID_LOSS = [xent(scor, target) for scor in score[0:]]
+                            ID_LOSS = sum(ID_LOSS)
+                        else:
+                            ID_LOSS = xent(score, target)
+
+                        if isinstance(feat, list):
+                            TRI_LOSS = [triplet(feats, target)[0] for feats in feat[0:]]
+                            TRI_LOSS = sum(TRI_LOSS)
+                        else:
+                            TRI_LOSS = triplet(feat, target)[0]
+
+                        loss = config['model']['id_loss_weight'] * ID_LOSS + config['model'][
+                            'triplet_loss_weight'] * TRI_LOSS
+
+                        if i2tscore != None:
+                            I2TLOSS = xent(i2tscore, target)
+                            loss = config['model']['i2t_loss_weight'] * I2TLOSS + loss
+
+                        # === 解耦损失 ===
+                        decouple_dict = output_dict["decouple_features"]
+                        f_content = decouple_dict["content"]
+                        f_artifact = decouple_dict["artifact"]
+                        f_caption = decouple_dict["caption"]
+                        content_loss = 1.0 - torch.mean(torch.sum(f_content * f_caption, dim=1))
+                        orth_loss = torch.mean(torch.abs(torch.sum(f_content.detach() * f_artifact, dim=1)))
+                        loss = loss + config['model']['content_loss'] * content_loss + config['model']['orth_loss'] * orth_loss
+                        return loss
+                    else:
+                        if isinstance(score, list):
+                            ID_LOSS = [F.cross_entropy(scor, target) for scor in score[0:]]
+                            ID_LOSS = sum(ID_LOSS)
+                        else:
+                            ID_LOSS = F.cross_entropy(score, target)
+
+                        if isinstance(feat, list):
+                            TRI_LOSS = [triplet(feats, target)[0] for feats in feat[0:]]
+                            TRI_LOSS = sum(TRI_LOSS)
+                        else:
+                            TRI_LOSS = triplet(feat, target)[0]
+
+                        loss = config['model']['id_loss_weight'] * ID_LOSS + config['model'][
+                            'triplet_loss_weight'] * TRI_LOSS
+
+                        if i2tscore != None:
+                            I2TLOSS = F.cross_entropy(i2tscore, target)
+                            loss = config['model']['i2t_loss_weight'] * I2TLOSS + loss
+
+                        return loss
+                else:
+                    logger.error('expected METRIC_LOSS_TYPE should be triplet'
+                                 'but got {}'.format(config['model']['metric_loss_type']))
+
+        else:
+            logger.error('expected sampler should be softmax, triplet, softmax_triplet or softmax_triplet_center'
+                         'but got {}'.format(config['dataset']['sampler']))
+
+        return loss_func
+
+
+    def forward(self, data_dict=None, label=None, captions=None, get_image=False, get_text=False):
         # --- 分支 1: Stage 1/2 获取文本特征 (CoOp Prompts) ---
         # Processor 调用: model(label=target, get_text=True)
         if get_text:
@@ -87,32 +172,43 @@ class EffortCoopDetector(BaseModel):
             return text_features
 
         x = data_dict['imgs']
-        # --- 分支 2: Stage 1 获取图像特征 ---
-        # Processor 调用: model(img, get_image=True)
+        vision_outputs = self.image_encoder(x)
+        raw_image_features = vision_outputs['pooler_output']
+        semantic_image_features = self.visual_projection(raw_image_features)  # [Batch, 768]
         if get_image:
-            image_features = self.image_encoder(x)['pooler_output']
-            image_features_proj = self.visual_projection(image_features)
-            return image_features_proj
+            return semantic_image_features
 
-        image_features = self.image_encoder(x)['pooler_output']
-        image_features_proj = self.visual_projection(image_features)
+        feat_content = self.content_adapter(semantic_image_features)
+        feat_artifact = self.artifact_adapter(raw_image_features)
+        feat_content_norm = feat_content / (feat_content.norm(p=2, dim=-1, keepdim=True) + 1e-8)
+        feat_artifact_norm = feat_artifact / (feat_artifact.norm(p=2, dim=-1, keepdim=True) + 1e-8)
 
-        feat = self.bottleneck(image_features)
-        feat_proj = self.bottleneck_proj(image_features_proj)
-
+        feat_artifact_bn = self.bottleneck_proj(feat_artifact)
         if self.training:
-            cls_score = self.classifier(feat)
-            cls_score_proj = self.classifier_proj(feat_proj)
+            cls_score_proj = self.classifier_proj(feat_artifact_bn)
+            with torch.no_grad():
+                # 我们希望 Caption 特征是 Ground Truth，所以不计算梯度，或者根据需求开启梯度
+                # 这里假设用原始 CLIP Text Encoder 提取标准语义
+                tokenized_captions = self.tokenizer(
+                    captions, padding=True, truncation=True, max_length=77, return_tensors="pt"
+                ).to(x.device)
+                feat_caption = self.clip_model.get_text_features(**tokenized_captions)
+                feat_caption = feat_caption / (feat_caption.norm(p=2, dim=-1, keepdim=True)+ 1e-8)
             return {
-                "cls_score": [cls_score, cls_score_proj],
-                "feat": [image_features, image_features_proj],  # 用于 Triplet Loss
-                "image_features": image_features_proj,
+                "cls_score": cls_score_proj,
+                "feat": feat_artifact,
+                "image_features": semantic_image_features,
+                "decouple_features":{
+                    "content": feat_content_norm,
+                    "artifact": feat_artifact_norm,
+                    "caption": feat_caption
+                }
             }
         else:
             if self.config["test"]["neck_feat"] == 'after':
-                return torch.cat([feat, feat_proj], dim=1)
+                return feat_artifact_bn
             else:
-                return torch.cat([image_features, image_features_proj], dim=1)
+                return feat_artifact_norm
 
     def make_optimizer_stage1(self, config, model):
         params = []
@@ -346,7 +442,7 @@ def replace_with_svd_residual(module, r):
 
 
 class PromptLearner(nn.Module):
-    def __init__(self, num_classes, class_names=None, clip_model=None):
+    def __init__(self, num_classes, class_names=None, clip_model=None, tokenizer=None):
         super().__init__()
 
         n_ctx = 16  # 学习 16 个 Context Token
@@ -371,8 +467,6 @@ class PromptLearner(nn.Module):
         for name in class_names:
             name = name.replace("_", " ")
             prompts.append(prompt_prefix + " " + name + ".")
-
-        tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
 
         tokenized_prompts = tokenizer(prompts, padding="max_length", max_length=77, truncation=True,
                                       return_tensors="pt").input_ids  # [n_cls, 77]
@@ -466,3 +560,15 @@ class TextEncoder(nn.Module):
         x = self.text_projection(x)
 
         return x
+
+class FeatureDecoupler(nn.Module):
+    def __init__(self, input_dim, output_dim, dropout=0.5):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_dim, output_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(output_dim, output_dim)
+        )
+    def forward(self, x):
+        return self.net(x)

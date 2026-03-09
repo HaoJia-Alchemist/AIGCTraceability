@@ -39,8 +39,15 @@ class PromptLearnCaptionProcessor(BaseProcessor):
         self.acc_meter = AverageMeter()
         self.caption_loss_meter = AverageMeter()
         self.epoch = self.model.epoch if self.accelerator.num_processes == 1 else self.model.module.epoch
+        # self.epoch = self.model.module.epoch
         self.evaluator = R1_mAP_eval(num_query, max_rank=50, feat_norm=config["test"]["feat_norm"],
-                                     reranking=self.config["test"]["re_ranking"])
+                                     reranking=self.config["test"]["re_ranking"],
+                                     use_pca=self.config["test"]["use_pca"],
+                                     pca_dim=self.config["test"]["pca_dim"],
+                                     use_clustering=config["test"]["use_clustering"],
+                                     n_clusters=self.config["test"]["n_clusters"],
+                                     use_medoid=self.config["test"]["use_medoid"],
+                                     )
         logger.info('processor init ...')
         logger.info(
             f'log_period: {self.log_period}, checkpoint_period: {self.checkpoint_period}, eval_period: {self.eval_period}, max_epoch_stage1: {self.max_epoch_stage1}, max_epoch_stage2: {self.max_epoch_stage2}"')
@@ -117,7 +124,7 @@ class PromptLearnCaptionProcessor(BaseProcessor):
 
     def do_train_stage2(self):
         logger.info("Start train stage 2 ...")
-        best_metrics = {"mAP": 0.0, "Rank@1": 0.0, "Rank@5": 0.0, "Rank@10": 0.0, "Epoch": 0}
+        best_metrics = {"mAP": 0.0, "Rank@1": 0.0, "Rank@3": 0.0, "Rank@5": 0.0, "Rank@10": 0.0, "Epoch": 0}
         # train
         batch = self.config['dataset']['train_batch_size']
         i_ter = self.config['dataset']['num_classes'] // batch
@@ -151,15 +158,19 @@ class PromptLearnCaptionProcessor(BaseProcessor):
                 batch_prompts = list(data_dict['img_prompts'])
                 with (self.accelerator.autocast()):
                     output_dict = self.model(data_dict, captions=batch_prompts)
-
-                    logits = output_dict['image_features'] @ text_features.t()
-                    loss = self.loss_fn(output_dict, data_dict['df_ids'], logits)
+                    i2t_score = output_dict['image_features_proj'] @ text_features.t()
+                    loss = self.loss_fn(output_dict, data_dict, i2t_score)
 
                 self.accelerator.backward(loss)
                 self.optimizer_stage2.step()
                 self.scheduler_stage2.step()
+                score, target = output_dict["cls_score"], data_dict["df_ids"]
+                if isinstance(score, list):
+                    acc = (score[0].max(1)[1] == target).float().mean()
+                else:
+                    acc = (score.max(1)[1] == target).float().mean()
 
-                acc = (logits.max(1)[1] == data_dict['df_ids']).float().mean()
+                # acc = (logits.max(1)[1] == data_dict['df_ids']).float().mean()
 
                 self.loss_meter.update(loss.item(), data_dict['imgs'].shape[0])
                 self.acc_meter.update(acc, 1)
@@ -181,10 +192,10 @@ class PromptLearnCaptionProcessor(BaseProcessor):
             if epoch % self.eval_period == 0 or epoch == self.max_epoch_stage2 - 1:
                 cmc, mAP = self.do_validate()
                 if mAP > best_metrics["mAP"]:
-                    best_metrics = {"mAP": mAP, "Rank@1": cmc[0], "Rank@5": cmc[4], "Rank@10": cmc[9], "Epoch": epoch}
+                    best_metrics = {"mAP": mAP, "Rank@1": cmc[0], "Rank@3": cmc[2], "Rank@5": cmc[4], "Rank@10": cmc[9], "Epoch": epoch}
                     logger.info(
-                        "===> Best mAP: {:.3f}, Rank@1: {:.3f}, Rank@5: {:.3f}, Rank@10: {:.3f}, Epoch: {}".format(
-                            best_metrics["mAP"], best_metrics["Rank@1"], best_metrics["Rank@5"],
+                        "===> Best mAP: {:.3f}, Rank@1: {:.3f}, Rank@3: {:.3f}, Rank@10: {:.3f}, Epoch: {}".format(
+                            best_metrics["mAP"], best_metrics["Rank@1"], best_metrics["Rank@3"], best_metrics["Rank@5"],
                             best_metrics["Rank@10"], best_metrics["Epoch"]))
                     if self.accelerator.is_main_process:
                         self.save_model()
@@ -209,7 +220,7 @@ class PromptLearnCaptionProcessor(BaseProcessor):
         cmc, mAP, _, _, _, _ = self.evaluator.compute()
         logger.info("Validation Results - Epoch: {}".format(self.epoch))
         logger.info("mAP: {:.1%}".format(mAP))
-        for r in [1, 5, 10]:
+        for r in [1, 3, 5, 10]:
             logger.info("CMC curve, Rank-{:<3}:{:.1%}".format(r, cmc[r - 1]))
         torch.cuda.empty_cache()
         end_time = time.time()

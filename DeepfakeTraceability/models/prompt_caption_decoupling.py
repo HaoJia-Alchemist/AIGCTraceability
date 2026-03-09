@@ -5,7 +5,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import CLIPModel, CLIPTokenizer, CLIPProcessor
+from transformers import CLIPModel, CLIPTokenizer
 
 from loss import CenterLoss, CrossEntropyLabelSmooth, TripletLoss
 from . import MODEL_FACTORY
@@ -34,10 +34,18 @@ def weights_init_classifier(m):
     classname = m.__class__.__name__
     if classname.find('Linear') != -1:
         nn.init.normal_(m.weight, std=0.001)
-        if m.bias is not None:
+        if m.bias:
             nn.init.constant_(m.bias, 0.0)
 
 
+def contrastive_loss(logits: torch.Tensor) -> torch.Tensor:
+    return nn.functional.cross_entropy(logits, torch.arange(len(logits), device=logits.device))
+
+
+def clip_loss(similarity: torch.Tensor) -> torch.Tensor:
+    caption_loss = contrastive_loss(similarity)
+    image_loss = contrastive_loss(similarity.t())
+    return (caption_loss + image_loss) / 2.0
 
 
 @MODEL_FACTORY.register_module(module_name='Prompt_Caption_Decoupling')
@@ -49,118 +57,43 @@ class Prompt_Caption_Decoupling(BaseModel):
         self.in_planes_proj = 768
 
         self.clip_model = CLIPModel.from_pretrained(model_name)
-        text_processor = CLIPProcessor.from_pretrained(model_name)
+        self.clip_model.vision_model = apply_svd_residual_to_self_attn(self.clip_model.vision_model, r=1024 - 1)
+
+        self.tokenizer = CLIPTokenizer.from_pretrained(model_name)
 
         self.classifier = nn.Linear(self.in_planes, self.num_classes, bias=False)
         self.classifier.apply(weights_init_classifier)
         self.classifier_proj = nn.Linear(self.in_planes_proj, self.num_classes, bias=False)
         self.classifier_proj.apply(weights_init_classifier)
 
+        self.bottleneck = nn.BatchNorm1d(self.in_planes)
+        self.bottleneck.bias.requires_grad_(False)
+        self.bottleneck.apply(weights_init_kaiming)
+
         self.bottleneck_proj = nn.BatchNorm1d(self.in_planes_proj)
         self.bottleneck_proj.bias.requires_grad_(False)
         self.bottleneck_proj.apply(weights_init_kaiming)
+
+        self.classifier_artiface = nn.Linear(self.in_planes_proj, self.num_classes, bias=False)
+        self.classifier_artiface.apply(weights_init_classifier)
+
+        self.bottleneck_artiface = nn.BatchNorm1d(self.in_planes_proj)
+        self.bottleneck_artiface.bias.requires_grad_(False)
+        self.bottleneck_artiface.apply(weights_init_kaiming)
 
         self.clip_model.vision_model = apply_svd_residual_to_self_attn(self.clip_model.vision_model, r=1024 - 1)
         self.image_encoder = self.clip_model.vision_model
         self.visual_projection = self.clip_model.visual_projection
 
-        # === Tokenizer ===
-        self.tokenizer = CLIPTokenizer.from_pretrained(model_name)
-
-        self.prompt_learner = PromptLearner(num_classes, clip_model=self.clip_model, tokenizer=self.tokenizer)
+        self.prompt_learner = PromptLearner(num_classes, clip_model=self.clip_model)
         self.text_encoder = TextEncoder(self.clip_model)
 
-        # === 解耦映射头 ===
-        self.content_adapter = FeatureDecoupler(self.in_planes_proj, self.in_planes_proj)
-        self.artifact_adapter = FeatureDecoupler(self.in_planes_proj, self.in_planes_proj)
-        # 初始化权重
-        self.content_adapter.apply(weights_init_classifier)  # 使用分类器初始化方式即可
-        self.artifact_adapter.apply(weights_init_classifier)
+        self.content_adapter = ResidualAdapter(self.in_planes_proj, self.in_planes_proj)
+        # self.artifact_adapter = ResidualAdapter(self.in_planes_proj, self.in_planes_proj)
+        self.artifact_adapter = AttentiveArtifactExtractor(self.in_planes, self.in_planes_proj)
 
-    def make_loss(self, config, num_classes=10):
-        sampler = config['dataset']['sampler']
-        if 'triplet' in config['model']['metric_loss_type']:
-            if config['model']['no_margin']:
-                triplet = TripletLoss()
-                logger.info("using soft triplet loss for training")
-            else:
-                triplet = TripletLoss(config['solver']['margin'])  # triplet loss
-                logger.info("using triplet loss with margin:{}".format(config['solver']['margin']))
-        else:
-            logger.error('expected METRIC_LOSS_TYPE should be triplet'
-                         'but got {}'.format(config['model']['metric_loss_type']))
-
-        if config['model']['if_label_smooth'] == 'on':
-            xent = CrossEntropyLabelSmooth(num_classes=num_classes)
-            logger.info("label smooth on, num_classes: {}".format(num_classes))
-
-        if sampler == 'softmax':
-            def loss_func(score, feat, target):
-                return F.cross_entropy(score, target)
-
-        elif sampler == 'softmax_triplet':
-            def loss_func(output_dict, target, i2tscore=None):
-                score, feat = output_dict['cls_score'], output_dict['feat']
-                if config['model']['metric_loss_type'] == 'triplet':
-                    if config['model']['if_label_smooth'] == 'on':
-                        if isinstance(score, list):
-                            ID_LOSS = [xent(scor, target) for scor in score[0:]]
-                            ID_LOSS = sum(ID_LOSS)
-                        else:
-                            ID_LOSS = xent(score, target)
-
-                        if isinstance(feat, list):
-                            TRI_LOSS = [triplet(feats, target)[0] for feats in feat[0:]]
-                            TRI_LOSS = sum(TRI_LOSS)
-                        else:
-                            TRI_LOSS = triplet(feat, target)[0]
-
-                        loss = config['model']['id_loss_weight'] * ID_LOSS + config['model'][
-                            'triplet_loss_weight'] * TRI_LOSS
-
-                        if i2tscore != None:
-                            I2TLOSS = xent(i2tscore, target)
-                            loss = config['model']['i2t_loss_weight'] * I2TLOSS + loss
-
-                        # === 解耦损失 ===
-                        decouple_dict = output_dict["decouple_features"]
-                        f_content = decouple_dict["content"]
-                        f_artifact = decouple_dict["artifact"]
-                        f_caption = decouple_dict["caption"]
-                        content_loss = 1.0 - torch.mean(torch.sum(f_content * f_caption, dim=1))
-                        orth_loss = torch.mean(torch.sum(f_content * f_artifact, dim=1) ** 2)
-                        loss = loss + config['model']['content_loss'] * content_loss + config['model']['orth_loss'] * orth_loss
-                        return loss
-                    else:
-                        if isinstance(score, list):
-                            ID_LOSS = [F.cross_entropy(scor, target) for scor in score[0:]]
-                            ID_LOSS = sum(ID_LOSS)
-                        else:
-                            ID_LOSS = F.cross_entropy(score, target)
-
-                        if isinstance(feat, list):
-                            TRI_LOSS = [triplet(feats, target)[0] for feats in feat[0:]]
-                            TRI_LOSS = sum(TRI_LOSS)
-                        else:
-                            TRI_LOSS = triplet(feat, target)[0]
-
-                        loss = config['model']['id_loss_weight'] * ID_LOSS + config['model'][
-                            'triplet_loss_weight'] * TRI_LOSS
-
-                        if i2tscore != None:
-                            I2TLOSS = F.cross_entropy(i2tscore, target)
-                            loss = config['model']['i2t_loss_weight'] * I2TLOSS + loss
-
-                        return loss
-                else:
-                    logger.error('expected METRIC_LOSS_TYPE should be triplet'
-                                 'but got {}'.format(config['model']['metric_loss_type']))
-
-        else:
-            logger.error('expected sampler should be softmax, triplet, softmax_triplet or softmax_triplet_center'
-                         'but got {}'.format(config['dataset']['sampler']))
-
-        return loss_func
+        self.content_adapter.apply(weights_init_kaiming)
+        self.artifact_adapter.apply(weights_init_kaiming)
 
 
     def forward(self, data_dict=None, label=None, captions=None, get_image=False, get_text=False):
@@ -171,49 +104,142 @@ class Prompt_Caption_Decoupling(BaseModel):
             text_features = self.text_encoder(prompts, self.prompt_learner.tokenized_prompts[label])
             return text_features
 
+        x = data_dict['imgs']
         # --- 分支 2: Stage 1 获取图像特征 ---
         # Processor 调用: model(img, get_image=True)
-        x = data_dict['imgs']
-        image_features = self.image_encoder(x)['pooler_output']
-        image_features_proj = self.visual_projection(image_features)
-
         if get_image:
+            image_features = self.image_encoder(x)['pooler_output']
+            image_features_proj = self.visual_projection(image_features)
             return image_features_proj
 
-        # 提取内容特征 (F_content)
-        feat_content = self.content_adapter(image_features_proj)
-        # 提取伪影特征 (F_artifact)
-        feat_artifact = self.artifact_adapter(image_features_proj)
+        vision_outputs = self.image_encoder(x)
+        last_hidden_state = vision_outputs.last_hidden_state
 
-        feat_content_norm = feat_content / feat_content.norm(p=2, dim=-1, keepdim=True)
-        feat_artifact_norm = feat_artifact / feat_artifact.norm(p=2, dim=-1, keepdim=True)
+        cls_token = last_hidden_state[:, 0, :]
+        patch_tokens = last_hidden_state[:, 1:, :]
+        cls_features = self.clip_model.vision_model.post_layernorm(cls_token)
+        cls_features_proj = self.visual_projection(cls_features)
 
-        feat_artifact_proj = self.bottleneck_proj(feat_artifact)
+        content_features = self.content_adapter(cls_features_proj)
+        artifact_features = self.artifact_adapter(patch_tokens)
+
+        feat = self.bottleneck(cls_features)
+        feat_proj = self.bottleneck_proj(cls_features_proj)
+        feat_artiface = self.bottleneck_artiface(artifact_features)
+
         if self.training:
-            cls_score_proj = self.classifier_proj(feat_artifact_proj)
-            with torch.no_grad():
-                # 我们希望 Caption 特征是 Ground Truth，所以不计算梯度，或者根据需求开启梯度
-                # 这里假设用原始 CLIP Text Encoder 提取标准语义
-                tokenized_captions = self.tokenizer(
-                    captions, padding=True, truncation=True, max_length=77, return_tensors="pt"
-                ).to(image_features.device)
-                feat_caption = self.clip_model.get_text_features(**tokenized_captions)
-                feat_caption = feat_caption / feat_caption.norm(p=2, dim=-1, keepdim=True)
+            cls_score = self.classifier(feat)
+            cls_score_proj = self.classifier_proj(feat_proj)
+            cls_score_artiface = self.classifier_artiface(feat_artiface)
+
+            if captions is not None:
+                with torch.no_grad():
+                    tokenized_captions = self.tokenizer(
+                        captions, padding=True, truncation=True, max_length=77, return_tensors="pt"
+                    ).to(x.device)
+                    # 使用原始 CLIP 提取纯净语义
+                    captions_features = self.clip_model.get_text_features(**tokenized_captions)[1]
+
             return {
-                "cls_score": cls_score_proj,
-                "feat": feat_artifact,
-                "image_features": image_features_proj,
-                "decouple_features":{
-                    "content": feat_content_norm,
-                    "artifact": feat_artifact_norm,
-                    "caption": feat_caption
-                }
+                "cls_score": [ cls_score, cls_score_proj],#, cls_score_artiface],
+                "image_features": [cls_features, cls_features_proj],#, artifact_features],
+                "image_features_proj": cls_features_proj,
+                # "decouple_features":{
+                #     "content": content_features,
+                #     "artifact": artifact_features,
+                #     "caption": captions_features
+                # }
             }
         else:
             if self.config["test"]["neck_feat"] == 'after':
-                return feat_artifact_proj
+                return feat
             else:
-                return feat_artifact
+                return image_features
+            if self.config["test"]["neck_feat"] == 'after':
+                return torch.cat([feat, feat_proj], dim=1)
+            else:
+                return torch.cat([image_features, image_features_proj], dim=1)
+
+    def make_loss(self, config, num_classes=10):
+        sampler = config['dataset']['sampler']
+
+        # 1. 初始化基础损失函数
+        if 'triplet' in config['model']['metric_loss_type']:
+            if config['model']['no_margin']:
+                triplet = TripletLoss()
+            else:
+                triplet = TripletLoss(config['solver']['margin'])
+        else:
+            triplet = None
+
+        if config['model']['if_label_smooth'] == 'on':
+            xent = CrossEntropyLabelSmooth(num_classes=num_classes)
+        else:
+            xent = nn.CrossEntropyLoss()
+
+        # 2. 定义具体的 Loss 计算逻辑
+        def loss_func(output_dict, data_dict, i2tscore=None):
+            cls_score = output_dict['cls_score']
+            image_features = output_dict['image_features']
+            target = data_dict['df_ids']
+            if isinstance(cls_score, list):
+                ID_LOSS = [xent(scor, target) for scor in cls_score[0:]]
+                ID_LOSS = sum(ID_LOSS)
+            else:
+                ID_LOSS = xent(cls_score, target)
+
+            if isinstance(image_features, list):
+                TRI_LOSS = [triplet(feats, target)[0] for feats in image_features[0:]]
+                TRI_LOSS = sum(TRI_LOSS)
+            else:
+                TRI_LOSS = triplet(image_features, target)[0]
+
+            loss = config['model']['id_loss_weight'] * ID_LOSS + config['model'][
+                'triplet_loss_weight'] * TRI_LOSS
+
+            # if i2tscore != None:
+            #     I2TLOSS = xent(i2tscore, target)
+            #     loss = config['model']['i2t_loss_weight'] * I2TLOSS + loss
+
+
+            # === C. 解耦专用损失 (Decoupling Losses) ===
+            # 只有在 output_dict 包含 'decouple_features' 时才计算 (即 Training 模式)
+            if "decouple_features" in output_dict:
+                decouple_dict = output_dict["decouple_features"]
+
+                f_content = decouple_dict["content"]  # 归一化后的内容特征
+                f_artifact = decouple_dict["artifact"]  # 归一化后的伪影特征
+                f_caption = decouple_dict["caption"]  # 归一化后的 Caption 特征 (GT)
+
+                # C.1 内容对齐损失 (Content Alignment Loss)
+                # 目标: f_content 应该与 f_caption 越像越好
+                # Loss = 1 - CosineSimilarity (因为输入已归一化，Cosine 就是点积)
+                if f_caption is not None:
+                    # dim=1 求和得到每个样本的点积，然后 mean
+                    sim_content = torch.nn.functional.cosine_similarity(f_content,f_caption)
+                    loss_content = 1 - sim_content.mean()
+                else:
+                    loss_content = 0.0
+
+                f_content_norm = F.normalize(f_content, p=2, dim=1)
+                f_artifact_norm = F.normalize(f_artifact, p=2, dim=1)
+                dot_product = (f_content_norm * f_artifact_norm).sum(dim=1)
+                loss_orthogonal = (dot_product ** 2).mean()
+
+
+                # === D. 最终加权求和 ===
+                # 从 config 中读取权重，如果没有则使用默认值
+                w_content = config['model'].get('content_loss_weight', 0.1)
+                w_orth = config['model'].get('orth_loss_weight', 0.1)
+
+                loss = loss + w_content * loss_content + w_orth * loss_orthogonal
+
+                # (可选) 打印调试信息，防止 Loss 爆炸
+                # print(f"ID: {ID_LOSS.item():.4f}, Tri: {TRI_LOSS.item():.4f}, Cont: {loss_content.item():.4f}, Orth: {loss_orth.item():.4f}")
+
+            return loss
+
+        return loss_func
 
     def make_optimizer_stage1(self, config, model):
         params = []
@@ -270,6 +296,60 @@ class Prompt_Caption_Decoupling(BaseModel):
             optimizer = getattr(torch.optim, config['solver']['stage2']['type'])(params)
         return optimizer
 
+class AttentiveArtifactExtractor(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super().__init__()
+        # 1. 注意力模块: 学习每个 Patch 的重要性权重
+        self.attn_proj = nn.Sequential(
+            nn.Linear(input_dim, input_dim // 2),
+            nn.Tanh(),
+            nn.Linear(input_dim // 2, 1)
+        )
+
+        # 2. 特征映射 (输入依然是 input_dim, 因为我们做的是加权和，而不是拼接)
+        # 如果你依然想保留 std 特征，可以拼接 Weighted_Mean + Std
+        self.adapter = ResidualAdapter(input_dim * 2, output_dim)
+
+    def forward(self, patch_tokens):
+        """
+        patch_tokens: [B, N, D]
+        """
+        # --- A. 计算空间注意力 ---
+        # attn_scores: [B, N, 1]
+        attn_scores = self.attn_proj(patch_tokens)
+        attn_weights = torch.softmax(attn_scores, dim=1)
+
+        # --- B. 加权聚合 (Weighted Pooling) ---
+        # [B, N, 1] * [B, N, D] -> sum(dim=1) -> [B, D]
+        weighted_feat = (patch_tokens * attn_weights).sum(dim=1)
+
+        # --- C. 补充统计特征 (Std Pooling) ---
+        # 标准差依然很有用，能捕捉噪声强度分布
+        std_feat = patch_tokens.std(dim=1)
+
+        # --- D. 拼接 & 映射 ---
+        combined = torch.cat([weighted_feat, std_feat], dim=1)  # [B, 2048]
+        return self.adapter(combined)
+
+class ResidualAdapter(nn.Module):
+    def __init__(self, input_dim, output_dim, dropout=0.2):
+        super().__init__()
+        # 降维 -> 激活 -> 升维 (Bottleneck结构)
+        hidden_dim = output_dim // 2
+        self.net = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, output_dim),
+            nn.LayerNorm(output_dim)
+        )
+        self.skip_connection = nn.Sequential(
+            nn.Linear(input_dim, output_dim),
+            nn.LayerNorm(output_dim)
+        )
+    def forward(self, x):
+        return self.net(x)+self.skip_connection(x)
 
 # Custom module to represent the residual using SVD components
 class SVDResidualLinear(nn.Module):
@@ -310,52 +390,6 @@ class SVDResidualLinear(nn.Module):
             weight = self.weight_main
 
         return F.linear(x, weight, self.bias)
-
-    def compute_orthogonal_loss(self):
-        if self.S_residual is not None:
-            # According to the properties of orthogonal matrices: A^TA = I
-            UUT = torch.cat((self.U_r, self.U_residual), dim=1) @ torch.cat((self.U_r, self.U_residual), dim=1).t()
-            VVT = torch.cat((self.V_r, self.V_residual), dim=0) @ torch.cat((self.V_r, self.V_residual), dim=0).t()
-            # print(self.U_r.size(), self.U_residual.size())  # torch.Size([1024, 1023]) torch.Size([1024, 1])
-            # print(self.V_r.size(), self.V_residual.size())  # torch.Size([1023, 1024]) torch.Size([1, 1024])
-            # UUT = self.U_residual @ self.U_residual.t()
-            # VVT = self.V_residual @ self.V_residual.t()
-
-            # Construct an identity matrix
-            UUT_identity = torch.eye(UUT.size(0), device=UUT.device)
-            VVT_identity = torch.eye(VVT.size(0), device=VVT.device)
-
-            # Using frobenius norm to compute loss
-            loss = 0.5 * torch.norm(UUT - UUT_identity, p='fro') + 0.5 * torch.norm(VVT - VVT_identity, p='fro')
-        else:
-            loss = 0.0
-
-        return loss
-
-    def compute_keepsv_loss(self):
-        if (self.S_residual is not None) and (self.weight_original_fnorm is not None):
-            # Total current weight is the fixed main weight plus the residual
-            weight_current = self.weight_main + self.U_residual @ torch.diag(self.S_residual) @ self.V_residual
-            # Frobenius norm of current weight
-            weight_current_fnorm = torch.norm(weight_current, p='fro')
-
-            loss = torch.abs(weight_current_fnorm ** 2 - self.weight_original_fnorm ** 2)
-            # loss = torch.abs(weight_current_fnorm ** 2 + 0.01 * self.weight_main_fnorm ** 2 - 1.01 * self.weight_original_fnorm ** 2)
-        else:
-            loss = 0.0
-
-        return loss
-
-    def compute_fn_loss(self):
-        if (self.S_residual is not None):
-            weight_current = self.weight_main + self.U_residual @ torch.diag(self.S_residual) @ self.V_residual
-            weight_current_fnorm = torch.norm(weight_current, p='fro')
-
-            loss = weight_current_fnorm ** 2
-        else:
-            loss = 0.0
-
-        return loss
 
 
 # Function to replace nn.Linear modules within self_attn modules with SVDResidualLinear
@@ -447,10 +481,10 @@ def replace_with_svd_residual(module, r):
 
 
 class PromptLearner(nn.Module):
-    def __init__(self, num_classes, class_names=None, clip_model=None, tokenizer=None):
+    def __init__(self, num_classes, class_names=None, clip_model=None):
         super().__init__()
 
-        n_ctx = 16  # 学习 16 个 Context Token
+        n_ctx = 4  # 学习 16 个 Context Token
         prompt_prefix = " ".join(["X"] * n_ctx) + " CLASS"
 
         token_embedding = clip_model.text_model.embeddings.token_embedding
@@ -472,6 +506,8 @@ class PromptLearner(nn.Module):
         for name in class_names:
             name = name.replace("_", " ")
             prompts.append(prompt_prefix + " " + name + ".")
+
+        tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
 
         tokenized_prompts = tokenizer(prompts, padding="max_length", max_length=77, truncation=True,
                                       return_tensors="pt").input_ids  # [n_cls, 77]
@@ -536,7 +572,9 @@ class TextEncoder(nn.Module):
         hidden_states = self.text_model.embeddings(inputs_embeds=prompts)
         bsz, seq_len = tokenized_prompts.shape
         extended_attention_mask = self.clip_model.get_extended_attention_mask(
-            attention_mask, (bsz, seq_len), prompts.device
+            attention_mask,
+            (bsz, seq_len),
+            dtype=self.clip_model.dtype
         )
         encoder_outputs = self.text_model.encoder(
             hidden_states,
@@ -565,15 +603,3 @@ class TextEncoder(nn.Module):
         x = self.text_projection(x)
 
         return x
-
-class FeatureDecoupler(nn.Module):
-    def __init__(self, input_dim, output_dim, dropout=0.1):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(input_dim, output_dim),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(output_dim, output_dim)
-        )
-    def forward(self, x):
-        return self.net(x)

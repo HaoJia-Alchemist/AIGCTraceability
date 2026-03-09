@@ -1,5 +1,9 @@
+#cd  /jsj_zyb/jh/workspace/AIGCTraceability/DeepfakeTraceability
 #cd  /home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability
-cd  /jsj_zyb/jh/workspace/AIGCTraceability/DeepfakeTraceability
+cd  /root/autodl-fs/workspace/GenTrace30/DeepfakeTraceability
+#Train_Config_File=./config/train_config.yaml
+#Train_Config_File=./config/train_config_SDAI.yaml
+Train_Config_File=./config/train_config_autodl.yaml
 
 
 # 检查yq命令是否存在
@@ -8,10 +12,9 @@ then
     echo "yq命令未找到，请先安装yq: pip install yq"
     exit 1
 fi
-train_config_file="./config/train_config.yaml"
-#train_config_file="./config/train_config_SDAI.yaml"
+
 # 从配置文件中读取gpu_ids
-GPU_IDS=$(python -c "import yaml; print(yaml.safe_load(open('${train_config_file}'))['gpu_ids'])")
+GPU_IDS=$(python -c "import yaml; print(yaml.safe_load(open('${Train_Config_File}'))['gpu_ids'])")
 # 检查gpu_ids是否为空或null
 if [ "$GPU_IDS" == "null" ] || [ "$GPU_IDS" == "" ]; then
     echo "未配置gpu_ids"
@@ -37,10 +40,12 @@ fi
 #CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" train_clip.py --config "./config/configs_dir/prompt_learn.yaml" --train_config_file "$train_config_file" --opt task_name='clip_vit_l14_prompt_learn' dataset.sampler='softmax_triplet'
 #CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" train_clip.py --config "./config/configs_dir/prompt_learn_caption.yaml" --opt dataset.sampler='softmax_triplet'
 
-#CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" train_clip.py --config "./config/configs_dir/adapter_prompt_learn.yaml" --train_config_file "$train_config_file" --opt task_name='clip_vit_l14_adapter_prompt_learn' dataset.sampler='softmax_triplet'
+#CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" train_clip.py --config "./config/configs_dir/adapter_prompt_learn.yaml" --train_config_file "$Train_Config_File" --opt task_name='clip_vit_l14_adapter_prompt_learn' dataset.sampler='softmax_triplet'
 
-#CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" train_clip.py --config "./config/configs_dir/effort_coop.yaml" --train_config_file "$train_config_file" --opt task_name='effort_wo_coop' dataset.sampler='softmax_triplet'
+#CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" train_clip.py --config "./config/configs_dir/effort_coop.yaml" --train_config_file "$Train_Config_File" --opt task_name='effort_wo_coop' dataset.sampler='softmax_triplet'
 
-#CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" train_clip.py --config "./config/configs_dir/lora_coop.yaml" --train_config_file "$train_config_file" --opt task_name='lora_coop' dataset.sampler='softmax_triplet'
+#CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" train_clip.py --config "./config/configs_dir/lora_coop.yaml" --train_config_file "$Train_Config_File" --opt task_name='lora_coop' dataset.sampler='softmax_triplet'
 
-CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" train_clip.py --config "./config/configs_dir/prompt_caption_decoupling.yaml" --train_config_file "$train_config_file" --opt task_name='prompt_caption_decoupling' dataset.sampler='softmax_triplet'
+#CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" train_clip.py --config "./config/configs_dir/lora_coop_decouple.yaml" --train_config_file "$Train_Config_File" --opt task_name='lora_coop_decouple' dataset.sampler='softmax_triplet'
+
+CUDA_VISIBLE_DEVICES="$GPU_IDS" accelerate launch $MULTI_GPU_ARG --num_processes "$NUM_PROCESSES" train_clip.py --config "./config/configs_dir/prompt_caption_decoupling.yaml" --train_config_file "$Train_Config_File" --opt task_name='prompt_caption_decoupling_s1_s2' dataset.sampler='softmax_triplet'
