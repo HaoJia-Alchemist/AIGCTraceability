@@ -1,0 +1,58 @@
+import torch
+from efficientnet_pytorch import EfficientNet
+from torch import nn
+import timm
+from . import MODEL_FACTORY
+from .base_model import BaseModel
+
+
+def weights_init_kaiming(m):
+    classname = m.__class__.__name__
+    if classname.find('Linear') != -1:
+        nn.init.kaiming_normal_(m.weight, a=0, mode='fan_out')
+        nn.init.constant_(m.bias, 0.0)
+
+    elif classname.find('Conv') != -1:
+        nn.init.kaiming_normal_(m.weight, a=0, mode='fan_in')
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0.0)
+    elif classname.find('BatchNorm') != -1:
+        if m.affine:
+            nn.init.constant_(m.weight, 1.0)
+            nn.init.constant_(m.bias, 0.0)
+
+def weights_init_classifier(m):
+    classname = m.__class__.__name__
+    if classname.find('Linear') != -1:
+        nn.init.normal_(m.weight, std=0.001)
+        if m.bias:
+            nn.init.constant_(m.bias, 0.0)
+
+@MODEL_FACTORY.register_module("xception")
+class XceptionModel(BaseModel):
+    def __init__(self, config=None, num_classes=10):
+        super(XceptionModel, self).__init__(config, num_classes)
+        self.in_planes = 2048
+        self.xception = timm.create_model('xception', pretrained=True)
+        del self.xception.fc
+        self.classifier = nn.Linear(self.in_planes, self.num_classes, bias=False)
+        self.classifier.apply(weights_init_classifier)
+
+        self.bottleneck = nn.BatchNorm1d(self.in_planes)
+        self.bottleneck.bias.requires_grad_(False)
+        self.bottleneck.apply(weights_init_kaiming)
+
+    def forward(self, data_dict):
+        x = data_dict.get('imgs')
+        img_feature = self.xception.forward_features(x)
+        img_feature = self.xception.global_pool(img_feature)
+        feat = self.bottleneck(img_feature)
+        if self.training:
+            cls_score = self.classifier(feat)
+            return {"cls_score": cls_score,
+            "image_features": feat}
+        else:
+            if self.config["test"]["neck_feat"] == 'after':
+                return feat
+            else:
+                return img_feature

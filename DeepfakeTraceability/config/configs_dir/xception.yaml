@@ -1,0 +1,67 @@
+# Xception model configuration for deepfake detection
+task_name: "xception"
+model_weights: /home/jh/disk/workspace/AIGCTraceability/DeepfakeTraceability/logs/xception_train_20260204204935/best_model/model.pth
+model:
+  name: "xception"  # Model name registered in MODEL_FACTORY
+  metric_loss_type: "triplet"  # Loss type: triplet, softmax, etc.
+  no_margin: False  # Whether to use soft margin in triplet loss
+  margin: 0.3  # Margin for triplet loss
+  if_label_smooth: "on"  # Label smoothing: on/off
+  id_loss_weight: 1.0  # Weight for identity/classification loss
+  triplet_loss_weight: 1.0  # Weight for triplet loss
+  i2t_loss_weight: 1.0  # Weight for image-to-text loss (if applicable)
+
+solver:
+  margin: 0.3
+  type: "Adam"
+  base_lr: 0.003
+  weight_decay: 0.0005
+  weight_decay_bias: 0.0005
+  momentum: 0.9
+  bias_lr_factor: 0.1
+  large_fc_lr: false
+  center_lr: 0.5
+  center_loss_weight: 0.005
+  steps: [ 40, 70 ]
+  gamma: 0.1
+  warmup_factor: 0.01
+  warmup_iters: 500
+  warmup_method: "linear"
+
+train:
+  processor: "base"
+  log_period: 50
+  checkpoint_period: 1
+  eval_period: 1
+  max_epoch: 20
+  checkpoint_dir: null
+
+test:
+  feat_norm: "yes"
+  processor: "base"
+  neck_feat: "after"
+  re_ranking: true
+  use_pca: false
+  pca_dim: 128
+  use_clustering: false
+  n_clusters: 100
+  use_medoid: false
+
+dataset:
+  resolution: 224
+  train_batch_size: 64
+  test_batch_size: 64
+  num_instances: 16
+  sampler: "softmax_triplet"
+  use_data_augmentation: true  # Add this flag to enable/disable data augmentation
+  data_aug:
+    flip_prob: 0.5
+    rotate_prob: 0.5
+    rotate_limit: [ -10, 10 ]
+    blur_prob: 0.5
+    blur_limit: [ 3, 7 ]
+    brightness_prob: 0.5
+    brightness_limit: [ -0.1, 0.1 ]
+    contrast_limit: [ -0.1, 0.1 ]
+    quality_lower: 40
+    quality_upper: 100
