@@ -204,7 +204,6 @@ The following table lists all supported image generation models with their confi
 | Juggernaut_X_v10 | StableDiffusionXL_Pipline_Generator | RunDiffusion/Juggernaut-X-v10 | 8 | single_file_url |
 | Juggernaut_XI_v11 | StableDiffusionXL_Pipline_Generator | RunDiffusion/Juggernaut-XI-v11 | 8 | single_file_url |
 | Janus_Pro_7B | Janus_Generator | deepseek-ai/Janus-Pro-7B | 1 | temperature: 1.0, parallel_size: 1, cfg_weight: 5.0, image_token_num_per_image: 576, img_size: 384, patch_size: 16 |
-| HiDream_I1_Full | Diffusion_Pipline_Generator | HiDream-ai/HiDream-I1-Full | 1 | Default parameters |
 | FLUX_1_Kera_Dev | Diffusion_Pipline_Generator | black-forest-labs/FLUX.1-Krea-dev | 4 | Default parameters |
 | Chroma1_Base | Diffusion_Pipline_Generator | lodestones/Chroma1-Base | 1 | Default parameters |
 | Kolors | Kolors_Generator | Kwai-Kolors/Kolors-diffusers | 1 | Default parameters |
